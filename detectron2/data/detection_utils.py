@@ -389,7 +389,14 @@ def build_transform_gen(cfg, is_train):
 
     logger = logging.getLogger(__name__)
     tfm_gens = []
+
     tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
+    tfm_gens.append(T.RandomContrast(0.5, 2))
+    tfm_gens.append(T.RandomBrightness(0.5, 2))
+    tfm_gens.append(T.RandomSaturation(0.5, 2))
+    tfm_gens.append(T.RandomLighting(1))
+    tfm_gens.append(T.Cutout((64, 128), cfg.MODEL.PIXEL_MEAN))
+
     if is_train:
         tfm_gens.append(T.RandomFlip())
         logger.info("TransformGens used in training: " + str(tfm_gens))

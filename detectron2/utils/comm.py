@@ -261,3 +261,51 @@ def reduce_dict(input_dict, average=True):
             values /= world_size
         reduced_dict = {k: v for k, v in zip(names, values)}
     return reduced_dict
+
+
+def merge1d(l):
+    res = {}
+    if len(l) == 0:
+        return res
+
+    keys = l[0].keys()
+    for k in keys:
+        l_n = []
+        for el in l:
+            l_n.append(el[k])
+        res[k] = l_n
+    return res
+
+
+def merge_l(d):
+    res = {}
+
+    for k, v in d.items():
+        res[k] = [t for i in v for t in i]
+
+    return res
+
+
+def merge_dicts(d):
+    res = {}
+    for k, v in d.items():
+        keys = v[0].keys()
+        new_d = {}
+        for k1 in keys:
+            new_v = []
+            for d2 in v:
+                new_v.append(d2[k1])
+            new_d[k1] = new_v
+
+        res[k] = new_d
+    return res
+
+
+def merge_tot(l):
+    res = l
+    res = merge1d(res)
+    res = merge_l(res)
+    #res = merge_dicts(res)
+    return res
+
+

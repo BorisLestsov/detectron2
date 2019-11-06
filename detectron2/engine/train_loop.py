@@ -209,7 +209,10 @@ class SimpleTrainer(TrainerBase):
         """
         If your want to do something with the losses, you can wrap the model.
         """
-        loss_dict = self.model(data)
+        pred, loss_dict = self.model(data)
+
+        self._write_data({"data": data, "pred": [{"instances": pred}]})
+
         losses = sum(loss for loss in loss_dict.values())
         self._detect_anomaly(losses, loss_dict)
 
@@ -268,3 +271,23 @@ class SimpleTrainer(TrainerBase):
             self.storage.put_scalar("total_loss", total_losses_reduced)
             if len(metrics_dict) > 1:
                 self.storage.put_scalars(**metrics_dict)
+
+    def _write_data(self, data_dict: dict):
+        """
+        Args:
+            metrics_dict (dict): dict of scalar metrics
+        """
+        data_dict = {
+            k: v.detach().cpu().item() if isinstance(v, torch.Tensor) else v
+            for k, v in data_dict.items()
+        }
+
+        all_data_dict = comm.gather(data_dict)
+
+        if comm.is_main_process():
+
+            all_data_dict = comm.merge_tot(all_data_dict)
+
+            for k,v in all_data_dict.items():
+                self.storage.put_data(k, v)
+

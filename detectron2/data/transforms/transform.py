@@ -6,7 +6,7 @@ import numpy as np
 from fvcore.transforms.transform import HFlipTransform, NoOpTransform, Transform
 from PIL import Image
 
-__all__ = ["ExtentTransform", "ResizeTransform"]
+__all__ = ["ExtentTransform", "ResizeTransform", "CutoutTransform"]
 
 
 class ExtentTransform(Transform):
@@ -87,6 +87,37 @@ class ResizeTransform(Transform):
     def apply_coords(self, coords):
         coords[:, 0] = coords[:, 0] * (self.new_w * 1.0 / self.w)
         coords[:, 1] = coords[:, 1] * (self.new_h * 1.0 / self.h)
+        return coords
+
+    def apply_segmentation(self, segmentation):
+        segmentation = self.apply_image(segmentation, interp=Image.NEAREST)
+        return segmentation
+
+class CutoutTransform(Transform):
+    """
+    Resize the image to a target size.
+    """
+
+    def __init__(self, img_h, img_w, h, w, value, p):
+        """
+        Args:
+            h, w (int): original image size
+            new_h, new_w (int): new image size
+            interp: PIL interpolation methods
+        """
+        # TODO decide on PIL vs opencv
+        super().__init__()
+        self._set_attributes(locals())
+
+    def apply_image(self, img, interp=None):
+        assert img.shape[:2] == (self.img_h, self.img_w)
+        if np.random.uniform() > self.p:
+            y = np.random.randint(0, self.img_h - self.h)
+            x = np.random.randint(0, self.img_w - self.w)
+            img[y:y+self.h, x:x+self.w, :] = self.value
+        return img
+
+    def apply_coords(self, coords):
         return coords
 
     def apply_segmentation(self, segmentation):

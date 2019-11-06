@@ -18,6 +18,7 @@ from fvcore.transforms.transform import (
 from PIL import Image
 
 from .transform import ExtentTransform, ResizeTransform
+from .transform import CutoutTransform
 
 __all__ = [
     "RandomBrightness",
@@ -30,6 +31,7 @@ __all__ = [
     "Resize",
     "ResizeShortestEdge",
     "TransformGen",
+    "Cutout",
     "apply_transform_gens",
 ]
 
@@ -410,6 +412,26 @@ class RandomLighting(TransformGen):
             src_image=self.eigen_vecs.dot(weights * self.eigen_vals), src_weight=1.0, dst_weight=1.0
         )
 
+class Cutout(TransformGen):
+    """ Cutout """
+
+    def __init__(self, shape, value=[103.530, 116.280, 123.675], p=0.5):
+        """
+        Args:
+            shape: (h, w) tuple or a int
+            interp: PIL interpolation method
+        """
+        if isinstance(shape, int):
+            shape = (shape, shape)
+        shape = tuple(shape)
+        value = tuple(value)
+        p = p
+        self._init(locals())
+
+    def get_transform(self, img):
+        return CutoutTransform(
+            img.shape[0], img.shape[1], self.shape[0], self.shape[1], self.value, self.p
+        )
 
 def apply_transform_gens(transform_gens, img):
     """
