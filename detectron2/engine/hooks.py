@@ -23,6 +23,7 @@ __all__ = [
     "CallbackHook",
     "IterationTimer",
     "PeriodicWriter",
+    "PeriodicVisualizer",
     "PeriodicCheckpointer",
     "LRScheduler",
     "AutogradProfiler",
@@ -168,6 +169,41 @@ class PeriodicWriter(HookBase):
     def after_train(self):
         for writer in self._writers:
             writer.close()
+
+
+class PeriodicVisualizer(HookBase):
+    """
+        Periodically visualizes training images
+    """
+
+    def __init__(self, model, period=20):
+        """
+        Args:
+            writers (list[EventWriter]): a list of EventWriter objects
+            period (int):
+        """
+        self.model = model
+        self._period = period
+
+    def after_step(self):
+        data = self.trainer._last_data
+
+        for v in data:
+            del v["height"]
+            del v["width"]
+
+        # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
+        if self.trainer.iter % self._period == 0:
+            self.model.eval()
+            with torch.no_grad():
+                pred = self.model(data)
+            self.model.train()
+
+            #self._write_data({"data": data, "pred": [{"instances": pred}]})
+            self.trainer._write_data({"data": data, "pred": pred})
+
+    def after_train(self):
+        pass
 
 
 class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):

@@ -216,13 +216,8 @@ class SimpleTrainer(TrainerBase):
             del v["height"]
             del v["width"]
 
-        # print("*"*100)
-        # print(data)
-        # print("*"*100)
-        # print(data[0]['image'].shape)
-        # print("*"*100)
-
         # TODO: move this to hook, use VIS_PERIOD
+        # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
         if self.iter % 1 == 0:
             self.model.eval()
             with torch.no_grad():
