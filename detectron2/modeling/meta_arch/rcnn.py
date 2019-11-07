@@ -85,19 +85,12 @@ class GeneralizedRCNN(nn.Module):
             proposals = [x["proposals"].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
-        proposals, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
-
-        need_vis = True
-        if need_vis:
-            with torch.no_grad():
-                pred_instances = self.roi_heads.forward_with_given_boxes(features, proposals)
-        else:
-            pred_instances = None
+        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
 
         losses = {}
         losses.update(detector_losses)
         losses.update(proposal_losses)
-        return pred_instances, losses
+        return losses
 
     def inference(self, batched_inputs, detected_instances=None, do_postprocess=True):
         """

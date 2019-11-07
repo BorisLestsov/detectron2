@@ -139,10 +139,11 @@ class TensorboardXWriter(EventWriter):
         img = img.transpose(1, 2, 0)
 
         predictions = predictions_all[0]
-        predictions = {'instances': predictions['instances'][0]}
-        print(predictions_all)
-        print("="*100)
-        print(predictions)
+        #predictions = {'instances': predictions['instances'][0]}
+
+        # print(predictions_all)
+        # print("="*100)
+        # print(predictions)
 
         visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
 
@@ -162,12 +163,12 @@ class TensorboardXWriter(EventWriter):
                 vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
         vis = visualizer.get_output()
-        vis.save("tmp.png")
+        #vis.save("tmp.png")
         res = vis.get_image()
         res = res[:, :, ::-1]
         res = res.transpose(2,0,1)
 
-        self._writer.add_image(k, res, storage.iter)
+        self._writer.add_image("visual", res, storage.iter)
 
     def close(self):
         if hasattr(self, "_writer"):  # doesn't exist when the code fails at import

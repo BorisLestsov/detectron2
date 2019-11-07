@@ -209,9 +209,28 @@ class SimpleTrainer(TrainerBase):
         """
         If your want to do something with the losses, you can wrap the model.
         """
-        pred, loss_dict = self.model(data)
+        loss_dict = self.model(data)
 
-        self._write_data({"data": data, "pred": [{"instances": pred}]})
+
+        for v in data:
+            del v["height"]
+            del v["width"]
+
+        # print("*"*100)
+        # print(data)
+        # print("*"*100)
+        # print(data[0]['image'].shape)
+        # print("*"*100)
+
+        # TODO: move this to hook, use VIS_PERIOD
+        if self.iter % 1 == 0:
+            self.model.eval()
+            with torch.no_grad():
+                pred = self.model(data)
+            self.model.train()
+
+        #self._write_data({"data": data, "pred": [{"instances": pred}]})
+        self._write_data({"data": data, "pred": pred})
 
         losses = sum(loss for loss in loss_dict.values())
         self._detect_anomaly(losses, loss_dict)

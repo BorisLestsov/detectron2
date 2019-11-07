@@ -118,6 +118,7 @@ class CutoutTransform(Transform):
         return img
 
     def apply_coords(self, coords):
+        # TODO remove coords completely in cropped region
         return coords
 
     def apply_segmentation(self, segmentation):
