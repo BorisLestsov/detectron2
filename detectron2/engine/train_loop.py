@@ -291,10 +291,14 @@ class SimpleTrainer(TrainerBase):
         Args:
             metrics_dict (dict): dict of scalar metrics
         """
-        data_dict = {
-            k: v.detach().cpu().item() if isinstance(v, torch.Tensor) else v
-            for k, v in data_dict.items()
-        }
+
+        print("CONVERTING")
+        #data_dict = comm.convert_cpu(data_dict)
+
+        # data_dict = {
+        #     k: v.detach().cpu().item() if isinstance(v, torch.Tensor) else v
+        #     for k, v in data_dict.items()
+        # }
 
         all_data_dict = comm.gather(data_dict)
 

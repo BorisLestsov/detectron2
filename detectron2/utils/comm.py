@@ -309,3 +309,19 @@ def merge_tot(l):
     return res
 
 
+# import detectron2.structures.instances as instances
+# def convert_cpu(data):
+#     d_cpu = {}
+#     if isinstance(data, dict):
+#         d_cpu = {k: convert_cpu(v) for k, v in data.items()}
+#     elif isinstance(data, tuple):
+#         d_cpu = (convert_cpu(v) for v in data)
+#     elif isinstance(data, list):
+#         d_cpu = [convert_cpu(v) for v in data]
+#     elif isinstance(data, torch.Tensor):
+#         d_cpu = data.detach().cpu()
+#     elif isinstance(data, instances.Instances):
+#         d_cpu = data.to('cpu')
+#     else:
+#         d_cpu = data
+#     return d_cpu

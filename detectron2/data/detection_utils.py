@@ -395,7 +395,7 @@ def build_transform_gen(cfg, is_train):
     tfm_gens.append(T.RandomBrightness(0.5, 2))
     tfm_gens.append(T.RandomSaturation(0.5, 2))
     tfm_gens.append(T.RandomLighting(1))
-    tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
+    # tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
 
     if is_train:
         tfm_gens.append(T.RandomFlip())
