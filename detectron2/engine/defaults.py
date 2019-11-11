@@ -364,18 +364,32 @@ class DefaultTrainer(SimpleTrainer):
         """
         If your want to do something with the data, you can wrap the dataloader.
         """
-        data = next(self._data_loader_iter)
+        all_data = next(self._data_loader_iter)
+
+        data = [i[0] for i in all_data]
+        data2 = [i[1] for i in all_data]
+
         self._last_data = data
         data_time = time.perf_counter() - start
 
         """
         If your want to do something with the losses, you can wrap the model.
         """
-        loss_dict = self.model(data)
+        rpn_feats1, loss_dict1 = self.model(data)
+        rpn_feats2, loss_dict2 = self.model(data2)
 
+        consistency_loss = torch.tensor(0.).float().cuda()
+        for i in range(len(rpn_feats1)):
+            for j in range(len(rpn_feats1[i])):
+                consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j], rpn_feats2[i][j])
 
+        loss_dict = {}
+        for k in loss_dict1.keys():
+            loss_dict[k] = loss_dict1[k] + loss_dict2[k]
+        loss_dict["consistency_loss"] = consistency_loss
 
-        losses = sum(loss for loss in loss_dict.values())
+        losses  = sum(loss for loss in loss_dict.values())
+
         self._detect_anomaly(losses, loss_dict)
 
         metrics_dict = loss_dict

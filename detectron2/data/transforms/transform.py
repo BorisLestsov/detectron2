@@ -98,7 +98,7 @@ class CutoutTransform(Transform):
     Resize the image to a target size.
     """
 
-    def __init__(self, img_h, img_w, h, w, value, p):
+    def __init__(self, img_h, img_w, h, w, value, p, num=1):
         """
         Args:
             h, w (int): original image size
@@ -111,10 +111,11 @@ class CutoutTransform(Transform):
 
     def apply_image(self, img, interp=None):
         assert img.shape[:2] == (self.img_h, self.img_w)
-        if np.random.uniform() > self.p:
-            y = np.random.randint(0, self.img_h - self.h)
-            x = np.random.randint(0, self.img_w - self.w)
-            img[y:y+self.h, x:x+self.w, :] = self.value
+        for i in range(self.num):
+            if np.random.uniform() > self.p:
+                y = np.random.randint(0, self.img_h - self.h)
+                x = np.random.randint(0, self.img_w - self.w)
+                img[y:y+self.h, x:x+self.w, :] = self.value
         return img
 
     def apply_coords(self, coords):

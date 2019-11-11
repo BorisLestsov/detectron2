@@ -186,3 +186,80 @@ class RPN(nn.Module):
             proposals = [p[ind] for p, ind in zip(proposals, inds)]
 
         return proposals, losses
+
+
+
+@PROPOSAL_GENERATOR_REGISTRY.register()
+class RPN_CONS(RPN):
+    """
+    Region Proposal Network, introduced by the Faster R-CNN paper.
+    """
+
+    def __init__(self, cfg, input_shape: Dict[str, ShapeSpec]):
+        super().__init__(cfg, input_shape)
+
+    def forward(self, images, features, gt_instances=None):
+        """
+        Args:
+            images (ImageList): input images of length `N`
+            features (dict[str: Tensor]): input data as a mapping from feature
+                map name to tensor. Axis 0 represents the number of images `N` in
+                the input data; axes 1-3 are channels, height, and width, which may
+                vary between feature maps (e.g., if a feature pyramid is used).
+            gt_instances (list[Instances], optional): a length `N` list of `Instances`s.
+                Each `Instances` stores ground-truth instances for the corresponding image.
+
+        Returns:
+            proposals: list[Instances] or None
+            loss: dict[Tensor]
+        """
+        gt_boxes = [x.gt_boxes for x in gt_instances] if gt_instances is not None else None
+        del gt_instances
+        features = [features[f] for f in self.in_features]
+        pred_objectness_logits, pred_anchor_deltas = self.rpn_head(features)
+        anchors = self.anchor_generator(features)
+        # TODO: The anchors only depend on the feature map shape; there's probably
+        # an opportunity for some optimizations (e.g., caching anchors).
+        outputs = RPNOutputs(
+            self.box2box_transform,
+            self.anchor_matcher,
+            self.batch_size_per_image,
+            self.positive_fraction,
+            images,
+            pred_objectness_logits,
+            pred_anchor_deltas,
+            anchors,
+            self.boundary_threshold,
+            gt_boxes,
+            self.smooth_l1_beta,
+        )
+
+        if self.training:
+            losses = {k: v * self.loss_weight for k, v in outputs.losses().items()}
+        else:
+            losses = {}
+
+        with torch.no_grad():
+            # Find the top proposals by applying NMS and removing boxes that
+            # are too small. The proposals are treated as fixed for approximate
+            # joint training with roi heads. This approach ignores the derivative
+            # w.r.t. the proposal boxes’ coordinates that are also network
+            # responses, so is approximate.
+            proposals = find_top_rpn_proposals(
+                outputs.predict_proposals(),
+                outputs.predict_objectness_logits(),
+                images,
+                self.nms_thresh,
+                self.pre_nms_topk[self.training],
+                self.post_nms_topk[self.training],
+                self.min_box_side_len,
+                self.training,
+            )
+            # For RPN-only models, the proposals are the final output and we return them in
+            # high-to-low confidence order.
+            # For end-to-end models, the RPN proposals are an intermediate state
+            # and this sorting is actually not needed. But the cost is negligible.
+            inds = [p.objectness_logits.sort(descending=True)[1] for p in proposals]
+            proposals = [p[ind] for p, ind in zip(proposals, inds)]
+
+        return proposals, losses, (pred_objectness_logits, pred_anchor_deltas)

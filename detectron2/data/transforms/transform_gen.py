@@ -415,7 +415,7 @@ class RandomLighting(TransformGen):
 class Cutout(TransformGen):
     """ Cutout """
 
-    def __init__(self, shape, value=[103.530, 116.280, 123.675], p=0.5):
+    def __init__(self, shape, value=[103.530, 116.280, 123.675], p=0.5, num=1):
         """
         Args:
             shape: (h, w) tuple or a int
@@ -426,11 +426,12 @@ class Cutout(TransformGen):
         shape = tuple(shape)
         value = tuple(value)
         p = p
+        num = num
         self._init(locals())
 
     def get_transform(self, img):
         return CutoutTransform(
-            img.shape[0], img.shape[1], self.shape[0], self.shape[1], self.value, self.p
+            img.shape[0], img.shape[1], self.shape[0], self.shape[1], self.value, self.p, self.num
         )
 
 def apply_transform_gens(transform_gens, img):

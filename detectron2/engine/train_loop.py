@@ -209,12 +209,7 @@ class SimpleTrainer(TrainerBase):
         """
         If your want to do something with the losses, you can wrap the model.
         """
-        loss_dict = self.model(data)
-
-
-        for v in data:
-            del v["height"]
-            del v["width"]
+        proposals, loss_dict = self.model(data)
 
         # TODO: move this to hook, use VIS_PERIOD
         # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
@@ -292,8 +287,7 @@ class SimpleTrainer(TrainerBase):
             metrics_dict (dict): dict of scalar metrics
         """
 
-        print("CONVERTING")
-        #data_dict = comm.convert_cpu(data_dict)
+        data_dict = comm.convert_cpu(data_dict)
 
         # data_dict = {
         #     k: v.detach().cpu().item() if isinstance(v, torch.Tensor) else v
