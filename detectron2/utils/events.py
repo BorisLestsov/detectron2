@@ -10,9 +10,6 @@ import torch
 from fvcore.common.file_io import PathManager
 from fvcore.common.history_buffer import HistoryBuffer
 
-from detectron2.utils.visualizer import ColorMode, Visualizer
-
-from detectron2.data import MetadataCatalog
 
 #
 _CURRENT_STORAGE_STACK = []
@@ -131,41 +128,13 @@ class TensorboardXWriter(EventWriter):
         for k, v in storage.latest_with_smoothing_hint(self._window_size).items():
             self._writer.add_scalar(k, v, storage.iter)
 
-        latest_data = storage.latest_data()
-        if 'data' in latest_data and 'pred' in latest_data:
-            data = latest_data["data"]
-            predictions_all = latest_data["pred"]
+        latest_data = storage.latest_data()["latest_data"]
+        for k, v in latest_data.items():
+            if 'data' in k or 'pred' in k:
+                name = k
+                data = v[0]
 
-            img = data[0]["image"].detach().cpu().numpy().astype(np.uint8)
-            img = img.transpose(1, 2, 0)
-
-            predictions = predictions_all[0]
-            #predictions = {'instances': predictions['instances'][0]}
-
-            visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
-
-            cpu_device = torch.device("cpu")
-            if "panoptic_seg" in predictions:
-                panoptic_seg, segments_info = predictions["panoptic_seg"]
-                vis_output = visualizer.draw_panoptic_seg_predictions(
-                    panoptic_seg.to(cpu_device), segments_info
-                )
-            else:
-                if "sem_seg" in predictions:
-                    vis_output = visualizer.draw_sem_seg(
-                        predictions["sem_seg"].argmax(dim=0).to(cpu_device)
-                    )
-                if "instances" in predictions:
-                    instances = predictions["instances"].to(cpu_device)
-                    vis_output = visualizer.draw_instance_predictions(predictions=instances)
-
-            vis = visualizer.get_output()
-            #vis.save("tmp.png")
-            res = vis.get_image()
-            res = res[:, :, ::-1]
-            res = res.transpose(2,0,1)
-
-            self._writer.add_image("visual", res, storage.iter)
+                self._writer.add_image(name, data, storage.iter)
 
     def close(self):
         if hasattr(self, "_writer"):  # doesn't exist when the code fails at import

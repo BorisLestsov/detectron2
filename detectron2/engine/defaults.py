@@ -291,7 +291,7 @@ class DefaultTrainer(SimpleTrainer):
             else None,
         ]
 
-        ret.append(hooks.PeriodicVisualizer(self.model, cfg.SOLVER.VIS_PERIOD))
+        ret.append(hooks.ConsistencyVisualizer(self.model, cfg.SOLVER.VIS_PERIOD))
 
         # Do PreciseBN before checkpointer, because it updates the model and need to
         # be saved by checkpointer.
@@ -369,7 +369,7 @@ class DefaultTrainer(SimpleTrainer):
         data = [i[0] for i in all_data]
         data2 = [i[1] for i in all_data]
 
-        self._last_data = data
+        self._last_data = [data, data2]
         data_time = time.perf_counter() - start
 
         """
@@ -378,15 +378,20 @@ class DefaultTrainer(SimpleTrainer):
         rpn_feats1, loss_dict1 = self.model(data)
         rpn_feats2, loss_dict2 = self.model(data2)
 
+
         consistency_loss = torch.tensor(0.).float().cuda()
         for i in range(len(rpn_feats1)):
             for j in range(len(rpn_feats1[i])):
                 consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j], rpn_feats2[i][j])
 
+        b1_w = 1.
+        b2_w = 0.
+        c_w = 0.
+
         loss_dict = {}
         for k in loss_dict1.keys():
-            loss_dict[k] = loss_dict1[k] + loss_dict2[k]
-        loss_dict["consistency_loss"] = consistency_loss
+            loss_dict[k] = b1_w*loss_dict1[k] + b2_w*loss_dict2[k]
+        loss_dict["consistency_loss"] = c_w*consistency_loss
 
         losses  = sum(loss for loss in loss_dict.values())
 

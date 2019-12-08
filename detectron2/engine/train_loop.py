@@ -300,6 +300,5 @@ class SimpleTrainer(TrainerBase):
 
             all_data_dict = comm.merge_tot(all_data_dict)
 
-            for k,v in all_data_dict.items():
-                self.storage.put_data(k, v)
+            self.storage.put_data("latest_data", all_data_dict)
 

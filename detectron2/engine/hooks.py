@@ -19,11 +19,16 @@ from detectron2.utils.events import EventStorage, EventWriter
 
 from .train_loop import HookBase
 
+from detectron2.utils.visualizer import ColorMode, Visualizer
+from detectron2.data import MetadataCatalog
+import numpy as np
+
 __all__ = [
     "CallbackHook",
     "IterationTimer",
     "PeriodicWriter",
     "PeriodicVisualizer",
+    "ConsistencyVisualizer",
     "PeriodicCheckpointer",
     "LRScheduler",
     "AutogradProfiler",
@@ -193,7 +198,7 @@ class PeriodicVisualizer(HookBase):
             del v["width"]
 
         # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
-        if self.trainer.iter % self._period == 0:
+        if (self.trainer.iter+1) % self._period == 0:
             self.model.eval()
             with torch.no_grad():
                 pred = self.model(data)
@@ -201,6 +206,81 @@ class PeriodicVisualizer(HookBase):
 
             #self._write_data({"data": data, "pred": [{"instances": pred}]})
             self.trainer._write_data({"data": data, "pred": pred})
+
+    def after_train(self):
+        pass
+
+class ConsistencyVisualizer(HookBase):
+    """
+        Periodically visualizes training images
+    """
+
+    def __init__(self, model, period=20):
+        """
+        Args:
+            writers (list[EventWriter]): a list of EventWriter objects
+            period (int):
+        """
+        self.model = model
+        self._period = period
+
+    def after_step(self):
+        preds = []
+        datas = []
+        if (self.trainer.iter+1) % self._period == 0:
+            for i, data in enumerate(self.trainer._last_data):
+                data2vis = data[0]
+                del data2vis["height"]
+                del data2vis["width"]
+
+                # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
+                self.model.eval()
+                with torch.no_grad():
+                    pred = self.model(data)
+                self.model.train()
+
+                predictions_all = pred
+
+                img = data2vis["image"].detach().cpu().numpy().astype(np.uint8)
+                img = img.transpose(1, 2, 0)
+
+                predictions = predictions_all[0]
+                #predictions = {'instances': predictions['instances'][0]}
+
+                visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
+
+                cpu_device = torch.device("cpu")
+                if "panoptic_seg" in predictions:
+                    panoptic_seg, segments_info = predictions["panoptic_seg"]
+                    vis_output = visualizer.draw_panoptic_seg_predictions(
+                        panoptic_seg.to(cpu_device), segments_info
+                    )
+                else:
+                    if "sem_seg" in predictions:
+                        vis_output = visualizer.draw_sem_seg(
+                            predictions["sem_seg"].argmax(dim=0).to(cpu_device)
+                        )
+                    if "instances" in predictions:
+                        instances = predictions["instances"].to(cpu_device)
+                        vis_output = visualizer.draw_instance_predictions(predictions=instances)
+
+                vis = visualizer.get_output()
+                #vis.save("tmp.png")
+                res = vis.get_image()
+                res = res[:, :, ::-1]
+                res = res.transpose(2,0,1)
+
+                visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
+                instances = data2vis["instances"].to(cpu_device)
+                img = visualizer.draw_instance_gt(predictions=instances).get_image()
+
+                img = img[:, :, ::-1]
+                img = img.transpose(2,0,1)
+
+                datas.append(img)
+                preds.append(res)
+
+            self.trainer._write_data({"data1": [datas[0]], "pred1": [preds[0]], "data2": [datas[1]], "pred2": [preds[1]]})
 
     def after_train(self):
         pass
