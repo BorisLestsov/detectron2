@@ -128,13 +128,14 @@ class TensorboardXWriter(EventWriter):
         for k, v in storage.latest_with_smoothing_hint(self._window_size).items():
             self._writer.add_scalar(k, v, storage.iter)
 
-        latest_data = storage.latest_data()["latest_data"]
-        for k, v in latest_data.items():
-            if 'data' in k or 'pred' in k:
-                name = k
-                data = v[0]
-
-                self._writer.add_image(name, data, storage.iter)
+        latest_data = storage.latest_data()
+        if "latest_data" in latest_data:
+            latest_data = latest_data["latest_data"]
+            for k, v in latest_data.items():
+                if 'data' in k or 'pred' in k:
+                    name = k
+                    data = v[0]
+                    self._writer.add_image(name, data, storage.iter)
 
     def close(self):
         if hasattr(self, "_writer"):  # doesn't exist when the code fails at import

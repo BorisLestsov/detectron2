@@ -384,9 +384,9 @@ class DefaultTrainer(SimpleTrainer):
             for j in range(len(rpn_feats1[i])):
                 consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j], rpn_feats2[i][j])
 
-        b1_w = 1.
-        b2_w = 0.
-        c_w = 0.
+        b1_w = self.cfg.SOLVER.B1_W
+        b2_w = self.cfg.SOLVER.B2_W
+        c_w = self.cfg.SOLVER.C_W
 
         loss_dict = {}
         for k in loss_dict1.keys():

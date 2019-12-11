@@ -392,13 +392,14 @@ def build_transform_gen(cfg, is_train):
 
     tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
     if is_train:
-        tfm_gens.append(T.RandomContrast(0.5, 2))
-        tfm_gens.append(T.RandomBrightness(0.5, 2))
-        tfm_gens.append(T.RandomSaturation(0.5, 2))
-        tfm_gens.append(T.RandomLighting(1))
-        tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
+        if cfg.INPUT.USE_TRAIN_AUG_HARD:
+            tfm_gens.append(T.RandomContrast(0.5, 2))
+            tfm_gens.append(T.RandomBrightness(0.5, 2))
+            tfm_gens.append(T.RandomSaturation(0.5, 2))
+            tfm_gens.append(T.RandomLighting(1))
+            tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
 
-    # if is_train:
-        # tfm_gens.append(T.RandomFlip())
-    logger.info("TransformGens used in training: " + str(tfm_gens))
+        if cfg.INPUT.USE_TRAIN_AUG_ANNO_MODIFY:
+            tfm_gens.append(T.RandomFlip())
+    logger.info("TransformGens used: " + str(tfm_gens))
     return tfm_gens
