@@ -365,33 +365,35 @@ class DefaultTrainer(SimpleTrainer):
         If your want to do something with the data, you can wrap the dataloader.
         """
         all_data = next(self._data_loader_iter)
-
+        self._last_data = []
         data = [i[0] for i in all_data]
-        data2 = [i[1] for i in all_data]
+        self._last_data.append(data)
 
-        self._last_data = [data, data2]
         data_time = time.perf_counter() - start
 
-        """
-        If your want to do something with the losses, you can wrap the model.
-        """
         rpn_feats1, loss_dict1 = self.model(data)
-        rpn_feats2, loss_dict2 = self.model(data2)
-
-
-        consistency_loss = torch.tensor(0.).float().cuda()
-        for i in range(len(rpn_feats1)):
-            for j in range(len(rpn_feats1[i])):
-                consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j], rpn_feats2[i][j])
-
-        b1_w = self.cfg.SOLVER.B1_W
-        b2_w = self.cfg.SOLVER.B2_W
-        c_w = self.cfg.SOLVER.C_W
 
         loss_dict = {}
         for k in loss_dict1.keys():
-            loss_dict[k] = b1_w*loss_dict1[k] + b2_w*loss_dict2[k]
-        loss_dict["consistency_loss"] = c_w*consistency_loss
+            loss_dict[k] = self.cfg.SOLVER.B1_W*loss_dict1[k]
+
+        if self.cfg.SOLVER.USE_CONS:
+            data2 = [i[1] for i in all_data]
+            self._last_data.append(data2)
+
+            rpn_feats2, loss_dict2 = self.model(data2)
+
+            consistency_loss = torch.tensor(0.).float().cuda()
+            for i in range(len(rpn_feats1)):
+                consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i], rpn_feats2[i].flip(2).detach())
+                consistency_loss += torch.nn.functional.mse_loss(rpn_feats2[i], rpn_feats1[i].flip(2).detach())
+            # for i in range(len(rpn_feats1)):
+            #     for j in range(len(rpn_feats1[i])):
+            #         consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j].detach(), rpn_feats2[i][j])
+
+            for k in loss_dict2.keys():
+                loss_dict[k] += self.cfg.SOLVER.B2_W*loss_dict2[k]
+            loss_dict["consistency_loss"] = self.cfg.SOLVER.C_W*consistency_loss
 
         losses  = sum(loss for loss in loss_dict.values())
 

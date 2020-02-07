@@ -505,9 +505,13 @@ _C.SOLVER.VIS_PERIOD = 1000
 _C.SOLVER.B1_W = 1.
 _C.SOLVER.B2_W = 0.
 _C.SOLVER.C_W = 0.
+_C.SOLVER.USE_CONS = False
 
 _C.INPUT.USE_TRAIN_AUG_HARD = False
 _C.INPUT.USE_TRAIN_AUG_ANNO_MODIFY = True
+
+_C.DATASETS.FRAC = 0.2
+
 
 # Number of images per batch across all machines.
 # If we have 16 GPUs and IMS_PER_BATCH = 32,

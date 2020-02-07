@@ -239,7 +239,7 @@ def build_batch_data_sampler(
 
 
 def get_detection_dataset_dicts(
-    dataset_names, filter_empty=True, min_keypoints=0, proposal_files=None
+    dataset_names, filter_empty=True, min_keypoints=0, proposal_files=None, frac=1.0
 ):
     """
     Load and prepare dataset dicts for instance detection/segmentation and semantic segmentation.
@@ -282,6 +282,34 @@ def get_detection_dataset_dicts(
             print_instances_class_histogram(dataset_dicts, class_names)
         except AttributeError:  # class names are not available for this dataset
             pass
+
+    d = dict()
+    for ann in dataset_dicts:
+        for ent in ann["annotations"]:
+            cat = ent["category_id"]
+            d[cat] = d.get(cat, 0) + 1
+
+    d2 = dict()
+    for k, v in d.items():
+        d2[k] = int(round(v*frac))
+
+    new_dataset_dicts = []
+    for ann in dataset_dicts:
+        add = False
+        for ent in ann["annotations"]:
+            cat = ent["category_id"]
+            if d2[cat] > 0:
+                add = True
+        if add:
+            for ent in ann["annotations"]:
+                cat = ent["category_id"]
+                d2[cat] -= 1
+            new_dataset_dicts.append(ann)
+
+    print(d2)
+    print(len(new_dataset_dicts), len(dataset_dicts))
+    dataset_dicts = new_dataset_dicts
+
     return dataset_dicts
 
 
@@ -325,6 +353,7 @@ def build_detection_train_loader(cfg, mapper=None):
         if cfg.MODEL.KEYPOINT_ON
         else 0,
         proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN if cfg.MODEL.LOAD_PROPOSALS else None,
+        frac=cfg.DATASETS.FRAC
     )
     dataset = DatasetFromList(dataset_dicts, copy=False)
 

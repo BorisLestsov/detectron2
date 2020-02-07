@@ -225,8 +225,7 @@ class ConsistencyVisualizer(HookBase):
         self._period = period
 
     def after_step(self):
-        preds = []
-        datas = []
+        data_dict = {}
         if (self.trainer.iter+1) % self._period == 0:
             for i, data in enumerate(self.trainer._last_data):
                 data2vis = data[0]
@@ -277,10 +276,10 @@ class ConsistencyVisualizer(HookBase):
                 img = img[:, :, ::-1]
                 img = img.transpose(2,0,1)
 
-                datas.append(img)
-                preds.append(res)
+                data_dict["data{}".format(i)] = [img]
+                data_dict["pred{}".format(i)] = [res]
 
-            self.trainer._write_data({"data1": [datas[0]], "pred1": [preds[0]], "data2": [datas[1]], "pred2": [preds[1]]})
+            self.trainer._write_data(data_dict)
 
     def after_train(self):
         pass

@@ -393,11 +393,12 @@ def build_transform_gen(cfg, is_train):
     tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
     if is_train:
         if cfg.INPUT.USE_TRAIN_AUG_HARD:
-            tfm_gens.append(T.RandomContrast(0.5, 2))
-            tfm_gens.append(T.RandomBrightness(0.5, 2))
-            tfm_gens.append(T.RandomSaturation(0.5, 2))
-            tfm_gens.append(T.RandomLighting(1))
-            tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
+            # tfm_gens.append(T.RandomContrast(0.5, 2))
+            # tfm_gens.append(T.RandomBrightness(0.5, 2))
+            # tfm_gens.append(T.RandomSaturation(0.5, 2))
+            # tfm_gens.append(T.RandomLighting(1))
+            # tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
+            pass
 
         if cfg.INPUT.USE_TRAIN_AUG_ANNO_MODIFY:
             tfm_gens.append(T.RandomFlip())

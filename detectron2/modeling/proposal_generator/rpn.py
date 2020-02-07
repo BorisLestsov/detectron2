@@ -185,7 +185,7 @@ class RPN(nn.Module):
             inds = [p.objectness_logits.sort(descending=True)[1] for p in proposals]
             proposals = [p[ind] for p, ind in zip(proposals, inds)]
 
-        return proposals, losses
+        return proposals, losses, None
 
 
 

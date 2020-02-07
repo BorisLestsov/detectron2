@@ -134,7 +134,7 @@ class RetinaNet(nn.Module):
 
         if self.training:
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
-            return self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta)
+            return features, self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta)
         else:
             results = self.inference(box_cls, box_delta, anchors, images)
             processed_results = []

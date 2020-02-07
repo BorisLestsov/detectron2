@@ -38,6 +38,9 @@ class DatasetMapper:
         else:
             self.crop_gen = None
 
+        self.add_trans = [T.RandomFlip(prob=1.0)]
+        self.cons     = cfg.SOLVER.USE_CONS
+
         tfm_gens = utils.build_transform_gen(cfg, is_train)
         self.static_tfm_gens, self.dynamic_tfm_gens = tfm_gens[:1], tfm_gens[1:]
 
@@ -76,36 +79,40 @@ class DatasetMapper:
         utils.check_image_size(dataset_dict_orig, image_orig)
         image_orig, transforms_stat = T.apply_transform_gens(self.static_tfm_gens, image_orig)
 
-        dup = 2
+        # USER: Write your own image loading if it's not from a file
+
+        image = image_orig.copy()
+
+        if "annotations" not in dataset_dict_orig:
+            image, transforms = T.apply_transform_gens(
+                ([self.crop_gen] if self.crop_gen else []) + self.tfm_gens, image
+            )
+        else:
+            # Crop around an instance if there are instances in the image.
+            # USER: Remove if you don't use cropping
+            if self.crop_gen:
+                crop_tfm = utils.gen_crop_transform_with_instance(
+                    self.crop_gen.get_crop_size(image.shape[:2]),
+                    image.shape[:2],
+                    np.random.choice(dataset_dict_orig["annotations"]),
+                )
+                image = crop_tfm.apply_image(image)
+
+            image, transforms = T.apply_transform_gens(self.dynamic_tfm_gens, image)
+            transforms = transforms_stat + transforms
+
+            if self.crop_gen:
+                transforms = crop_tfm + transforms
+
+            image_shape = image.shape[:2]  # h, w
+
+        image_orig = image.copy()
+
+        dup = 2 if self.cons else 1
         ret = []
         for _ in range(dup):
             dataset_dict = copy.deepcopy(dataset_dict_orig)  # it will be modified by code below
-            # USER: Write your own image loading if it's not from a file
-
             image = image_orig.copy()
-
-            if "annotations" not in dataset_dict:
-                image, transforms = T.apply_transform_gens(
-                    ([self.crop_gen] if self.crop_gen else []) + self.tfm_gens, image
-                )
-            else:
-                # Crop around an instance if there are instances in the image.
-                # USER: Remove if you don't use cropping
-                if self.crop_gen:
-                    crop_tfm = utils.gen_crop_transform_with_instance(
-                        self.crop_gen.get_crop_size(image.shape[:2]),
-                        image.shape[:2],
-                        np.random.choice(dataset_dict["annotations"]),
-                    )
-                    image = crop_tfm.apply_image(image)
-
-                image, transforms = T.apply_transform_gens(self.dynamic_tfm_gens, image)
-                transforms = transforms_stat + transforms
-
-                if self.crop_gen:
-                    transforms = crop_tfm + transforms
-
-            image_shape = image.shape[:2]  # h, w
 
             # Pytorch's dataloader is efficient on torch.Tensor due to shared-memory,
             # but not efficient on large generic data structures due to the use of pickle & mp.Queue.
@@ -158,4 +165,10 @@ class DatasetMapper:
                 dataset_dict["sem_seg"] = sem_seg_gt
 
             ret.append(dataset_dict)
+
+            # CONSISTENCY_SAMPLE
+            image_orig, transforms_add = T.apply_transform_gens(self.add_trans, image_orig)
+            transforms += transforms_add
+
+
         return ret
