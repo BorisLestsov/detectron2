@@ -27,6 +27,7 @@ This file contains the default logic to build a dataloader for training or testi
 
 __all__ = [
     "build_detection_train_loader",
+    "build_detection_train_loader_zip",
     "build_detection_test_loader",
     "get_detection_dataset_dicts",
     "load_proposals_into_dataset",
@@ -306,11 +307,149 @@ def get_detection_dataset_dicts(
                 d2[cat] -= 1
             new_dataset_dicts.append(ann)
 
-    print(d2)
-    print(len(new_dataset_dicts), len(dataset_dicts))
+    # print(d2)
+    # print(len(new_dataset_dicts), len(dataset_dicts))
     dataset_dicts = new_dataset_dicts
 
     return dataset_dicts
+
+
+def build_detection_train_loader_zip(cfg, mapper=None):
+    """
+    A data loader is created by the following steps:
+
+    1. Use the dataset names in config to query :class:`DatasetCatalog`, and obtain a list of dicts.
+    2. Start workers to work on the dicts. Each worker will:
+      * Map each metadata dict into another format to be consumed by the model.
+      * Batch them by simply putting dicts into a list.
+    The batched ``list[mapped_dict]`` is what this dataloader will return.
+
+    Args:
+        cfg (CfgNode): the config
+        mapper (callable): a callable which takes a sample (dict) from dataset and
+            returns the format to be consumed by the model.
+            By default it will be `DatasetMapper(cfg, True)`.
+
+    Returns:
+        a torch DataLoader object
+    """
+    num_workers = get_world_size()
+    images_per_batch = cfg.SOLVER.IMS_PER_BATCH
+    assert (
+        images_per_batch % num_workers == 0
+    ), "SOLVER.IMS_PER_BATCH ({}) must be divisible by the number of workers ({}).".format(
+        images_per_batch, num_workers
+    )
+    assert (
+        images_per_batch >= num_workers
+    ), "SOLVER.IMS_PER_BATCH ({}) must be larger than the number of workers ({}).".format(
+        images_per_batch, num_workers
+    )
+    images_per_worker = images_per_batch // num_workers
+
+    logger = logging.getLogger(__name__)
+
+    # SUP
+
+
+    dataset_dicts = get_detection_dataset_dicts(
+        cfg.DATASETS.TRAIN,
+        filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
+        min_keypoints=cfg.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE
+        if cfg.MODEL.KEYPOINT_ON
+        else 0,
+        proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN if cfg.MODEL.LOAD_PROPOSALS else None,
+        frac=cfg.DATASETS.FRAC
+    )
+    dataset = DatasetFromList(dataset_dicts, copy=True)
+
+    # Bin edges for batching images with similar aspect ratios. If ASPECT_RATIO_GROUPING
+    # is enabled, we define two bins with an edge at height / width = 1.
+    group_bin_edges = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
+    aspect_ratios = [float(img["height"]) / float(img["width"]) for img in dataset]
+
+    if mapper is None:
+        mapper_sup = DatasetMapper(cfg, is_train=True, use_cons=False)
+    dataset = MapDataset(dataset, mapper_sup)
+
+    sampler_name = cfg.DATALOADER.SAMPLER_TRAIN
+    logger.info("Using training sampler {}".format(sampler_name))
+    if sampler_name == "TrainingSampler":
+        sampler = samplers.TrainingSampler(len(dataset))
+    elif sampler_name == "RepeatFactorTrainingSampler":
+        sampler = samplers.RepeatFactorTrainingSampler(
+            dataset_dicts, cfg.DATALOADER.REPEAT_THRESHOLD
+        )
+    else:
+        raise ValueError("Unknown training sampler: {}".format(sampler_name))
+    batch_sampler = build_batch_data_sampler(
+        sampler, images_per_worker, group_bin_edges, aspect_ratios
+    )
+
+    data_loader_sup = torch.utils.data.DataLoader(
+        dataset,
+        num_workers=cfg.DATALOADER.NUM_WORKERS,
+        batch_sampler=batch_sampler,
+        collate_fn=trivial_batch_collator,
+        worker_init_fn=worker_init_reset_seed,
+    )
+
+
+    # UNSUP
+
+
+    dataset_dicts_unsup = get_detection_dataset_dicts(
+        cfg.DATASETS.TRAIN_UNSUP,
+        filter_empty=cfg.DATALOADER.FILTER_EMPTY_ANNOTATIONS,
+        min_keypoints=cfg.MODEL.ROI_KEYPOINT_HEAD.MIN_KEYPOINTS_PER_IMAGE
+        if cfg.MODEL.KEYPOINT_ON
+        else 0,
+        proposal_files=cfg.DATASETS.PROPOSAL_FILES_TRAIN if cfg.MODEL.LOAD_PROPOSALS else None,
+        frac=1.0
+    )
+
+    if cfg.DATASETS.TRAIN_UNSUP == cfg.DATASETS.TRAIN:
+        names = [el["image_id"] for el in dataset_dicts]
+        names = set(names)
+        dataset_dicts_unsup = [el for el in dataset_dicts_unsup if not el["image_id"] in names]
+    logger.info("Train dataset sized: SUP: {}, UNSUP: {}".format(len(dataset_dicts), len(dataset_dicts_unsup)))
+
+
+    dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
+
+    # Bin edges for batching images with similar aspect ratios. If ASPECT_RATIO_GROUPING
+    # is enabled, we define two bins with an edge at height / width = 1.
+    group_bin_edges_unsup = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
+    aspect_ratios_unsup = [float(img["height"]) / float(img["width"]) for img in dataset_unsup]
+
+    if mapper is None:
+        mapper_unsup = DatasetMapper(cfg, is_train=True, use_cons=True)
+    dataset_unsup = MapDataset(dataset_unsup, mapper_unsup)
+
+    sampler_name_unsup = cfg.DATALOADER.SAMPLER_TRAIN
+    logger.info("Using training sampler UNSUP {}".format(sampler_name_unsup))
+    if sampler_name_unsup == "TrainingSampler":
+        sampler_unsup = samplers.TrainingSampler(len(dataset_unsup))
+    elif sampler_name_unsup == "RepeatFactorTrainingSampler":
+        sampler_unsup = samplers.RepeatFactorTrainingSampler(
+            dataset_dicts_unsup, cfg.DATALOADER.REPEAT_THRESHOLD
+        )
+    else:
+        raise ValueError("Unknown training sampler: {}".format(sampler_name_unsup))
+    batch_sampler_unsup = build_batch_data_sampler(
+        sampler_unsup, images_per_worker, group_bin_edges_unsup, aspect_ratios_unsup
+    )
+
+    data_loader_unsup = torch.utils.data.DataLoader(
+        dataset_unsup,
+        num_workers=cfg.DATALOADER.NUM_WORKERS,
+        batch_sampler=batch_sampler_unsup,
+        collate_fn=trivial_batch_collator,
+        worker_init_fn=worker_init_reset_seed,
+    )
+    res = (iter(data_loader_sup), iter(data_loader_unsup))
+    return res
+
 
 
 def build_detection_train_loader(cfg, mapper=None):
@@ -363,7 +502,7 @@ def build_detection_train_loader(cfg, mapper=None):
     aspect_ratios = [float(img["height"]) / float(img["width"]) for img in dataset]
 
     if mapper is None:
-        mapper = DatasetMapper(cfg, True)
+        mapper = DatasetMapper(cfg, is_train=True, use_cons=False)
     dataset = MapDataset(dataset, mapper)
 
     sampler_name = cfg.DATALOADER.SAMPLER_TRAIN

@@ -25,6 +25,7 @@ from detectron2.data import (
     MetadataCatalog,
     build_detection_test_loader,
     build_detection_train_loader,
+    build_detection_train_loader_zip,
 )
 from detectron2.evaluation import (
     DatasetEvaluator,
@@ -230,6 +231,8 @@ class DefaultTrainer(SimpleTrainer):
             )
         super().__init__(model, data_loader, optimizer)
 
+        self._data_loader_iter = data_loader
+
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
         # Assume no other objects need to be checkpointed.
         # We can later make it checkpoint the stateful hooks
@@ -284,7 +287,7 @@ class DefaultTrainer(SimpleTrainer):
                 cfg.TEST.EVAL_PERIOD,
                 self.model,
                 # Build a new data loader to not affect training
-                self.build_train_loader(cfg),
+                self.build_train_loader_prec_bn(cfg),
                 cfg.TEST.PRECISE_BN.NUM_ITER,
             )
             if cfg.TEST.PRECISE_BN.ENABLED and get_bn_modules(self.model)
@@ -364,35 +367,37 @@ class DefaultTrainer(SimpleTrainer):
         """
         If your want to do something with the data, you can wrap the dataloader.
         """
-        all_data = next(self._data_loader_iter)
+        #all_data_sup, all_data_unsup = next(self._data_loader_iter)
+        all_data_sup, all_data_unsup = next(self._data_loader_iter[0]), next(self._data_loader_iter[1])
         self._last_data = []
-        data = [i[0] for i in all_data]
+        data = [i[0] for i in all_data_sup]
         self._last_data.append(data)
 
         data_time = time.perf_counter() - start
 
-        rpn_feats1, loss_dict1 = self.model(data)
+        _, loss_dict_sup = self.model(data)
 
         loss_dict = {}
-        for k in loss_dict1.keys():
-            loss_dict[k] = self.cfg.SOLVER.B1_W*loss_dict1[k]
+        for k in loss_dict_sup.keys():
+            loss_dict[k] = self.cfg.SOLVER.B1_W*loss_dict_sup[k]
 
         if self.cfg.SOLVER.USE_CONS:
-            data2 = [i[1] for i in all_data]
+            data1 = [i[0] for i in all_data_unsup]
+            data2 = [i[1] for i in all_data_unsup]
+            self._last_data.append(data1)
             self._last_data.append(data2)
 
-            rpn_feats2, loss_dict2 = self.model(data2)
+            rpn_feats1, _ = self.model(data1)
+            rpn_feats2, _ = self.model(data2)
 
             consistency_loss = torch.tensor(0.).float().cuda()
             for i in range(len(rpn_feats1)):
+                # JSD
                 consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i], rpn_feats2[i].flip(2).detach())
                 consistency_loss += torch.nn.functional.mse_loss(rpn_feats2[i], rpn_feats1[i].flip(2).detach())
-            # for i in range(len(rpn_feats1)):
-            #     for j in range(len(rpn_feats1[i])):
-            #         consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i][j].detach(), rpn_feats2[i][j])
 
-            for k in loss_dict2.keys():
-                loss_dict[k] += self.cfg.SOLVER.B2_W*loss_dict2[k]
+            # for k in loss_dict2.keys():
+            #     loss_dict[k] += self.cfg.SOLVER.B2_W*loss_dict2[k]
             loss_dict["consistency_loss"] = self.cfg.SOLVER.C_W*consistency_loss
 
         losses  = sum(loss for loss in loss_dict.values())
@@ -460,7 +465,21 @@ class DefaultTrainer(SimpleTrainer):
         It now calls :func:`detectron2.data.build_detection_train_loader`.
         Overwrite it if you'd like a different data loader.
         """
+        res = build_detection_train_loader_zip(cfg)
+        print("KEK!")
+        return res
+
+    @classmethod
+    def build_train_loader_prec_bn(cls, cfg):
+        """
+        Returns:
+            iterable
+
+        It now calls :func:`detectron2.data.build_detection_train_loader`.
+        Overwrite it if you'd like a different data loader.
+        """
         return build_detection_train_loader(cfg)
+
 
     @classmethod
     def build_test_loader(cls, cfg, dataset_name):
