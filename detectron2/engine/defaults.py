@@ -496,8 +496,6 @@ class DefaultTrainer(SimpleTrainer):
         wrap the optimizer with your custom `zero_grad()` method.
         """
         self.optimizer.zero_grad()
-        # if comm.is_main_process():
-        #     print("BWD")
         losses.backward()
 
         """

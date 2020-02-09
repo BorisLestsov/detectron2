@@ -15,8 +15,6 @@ class AccSGD(torch.optim.SGD):
 
     def zero_grad(self):
         if (self.acc_cnt % self.acc_period) == 0:
-            if comm.is_main_process():
-                print("ZG")
             super().zero_grad()
 
     def step(self):
