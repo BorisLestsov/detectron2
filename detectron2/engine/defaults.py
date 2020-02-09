@@ -44,6 +44,11 @@ from detectron2.utils.logger import setup_logger
 from . import hooks
 from .train_loop import SimpleTrainer
 
+import torch
+import math
+import torch.nn as nn
+import torch.nn.functional as F
+
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
 
@@ -233,6 +238,9 @@ class DefaultTrainer(SimpleTrainer):
 
         self._data_loader_iter = data_loader
 
+        self.conf_consistency_criterion = torch.nn.KLDivLoss(size_average=False, reduce=False).cuda()
+        self.softmax = nn.Softmax(dim=-1)
+
         self.scheduler = self.build_lr_scheduler(cfg, optimizer)
         # Assume no other objects need to be checkpointed.
         # We can later make it checkpoint the stateful hooks
@@ -381,47 +389,138 @@ class DefaultTrainer(SimpleTrainer):
         for k in loss_dict_sup.keys():
             loss_dict[k] = self.cfg.SOLVER.B1_W*loss_dict_sup[k]
 
+        losses  = sum(loss for loss in loss_dict.values())
+
+        self._detect_anomaly(losses, loss_dict)
+
+        metrics_dict = loss_dict
+
+        # sup step
+        self.optimizer.zero_grad()
+        losses.backward()
+        self.optimizer.step()
+
+
+        loss_dict_cons = {}
         if self.cfg.SOLVER.USE_CONS:
             data1 = [i[0] for i in all_data_unsup]
             data2 = [i[1] for i in all_data_unsup]
             self._last_data.append(data1)
             self._last_data.append(data2)
 
-            rpn_feats1, _ = self.model(data1)
-            rpn_feats2, _ = self.model(data2)
+            (box_cls1, box_delta1), _ = self.model(data1)
+            (box_cls2, box_delta2), _ = self.model(data2)
 
-            consistency_loss = torch.tensor(0.).float().cuda()
-            for i in range(len(rpn_feats1)):
-                # JSD
-                consistency_loss += torch.nn.functional.mse_loss(rpn_feats1[i], rpn_feats2[i].flip(2).detach())
-                consistency_loss += torch.nn.functional.mse_loss(rpn_feats2[i], rpn_feats1[i].flip(2).detach())
+            for l in range(len(box_cls1)):
+                box_cls1[l] = box_cls1[l].permute(0, 2, 3, 1).contiguous()
+                box_delta1[l] = box_delta1[l].permute(0, 2, 3, 1).contiguous()
+                box_cls2[l] = box_cls2[l].permute(0, 2, 3, 1).contiguous().flip(2)
+                box_delta2[l] = box_delta2[l].permute(0, 2, 3, 1).contiguous().flip(2)
+
+            num_classes = self.model.module.num_classes
+
+            loc = torch.cat([o.view(o.size(0), -1) for o in box_delta1], 1)
+            conf = torch.cat([o.view(o.size(0), -1) for o in box_cls1], 1)
+            loc = loc.view(loc.size(0), -1, 4)
+            conf = self.softmax(conf.view(conf.size(0), -1, num_classes))
+
+            loc_flip = torch.cat([o.view(o.size(0), -1) for o in box_delta2], 1)
+            conf_flip = torch.cat([o.view(o.size(0), -1) for o in box_cls2], 1)
+            loc_flip = loc_flip.view(loc_flip.size(0), -1, 4)
+            conf_flip = self.softmax(conf_flip.view(conf.size(0), -1, num_classes))
+
+            # https://github.com/soo89/CSD-SSD/blob/master/train_csd.py#L267
+            sampling = True
+            if(sampling is True):
+                # conf_class = conf[:,:,1:].clone()
+                # background_score = conf[:, :, 0].clone()
+                # each_val, each_index = torch.max(conf_class, dim=2)
+                # mask_val = each_val > background_score
+                # mask_val = mask_val.data
+
+                # TODO: check this
+                be_thresh = 0.5
+                mask_val = conf > be_thresh
+
+                # mask_conf_index = mask_val.unsqueeze(2).expand_as(conf)
+                # mask_loc_index = mask_val.unsqueeze(2).expand_as(loc)
+                mask_conf_index = mask_val
+                mask_loc_index = mask_val.any(dim=2).unsqueeze(2).expand_as(loc)
+
+                conf_mask_sample = conf.clone()
+                loc_mask_sample = loc.clone()
+                conf_sampled = conf_mask_sample[mask_conf_index].view(-1, num_classes)
+                loc_sampled = loc_mask_sample[mask_loc_index].view(-1, 4)
+
+                conf_mask_sample_flip = conf_flip.clone()
+                loc_mask_sample_flip = loc_flip.clone()
+                # TODO: wtf, conf_index to flipped pred?
+                conf_sampled_flip = conf_mask_sample_flip[mask_conf_index].view(-1, num_classes)
+                loc_sampled_flip = loc_mask_sample_flip[mask_loc_index].view(-1, 4)
+
+            if(mask_val.sum()>0):
+                ## JSD !!!!!1
+                conf_sampled_flip = conf_sampled_flip + 1e-7
+                conf_sampled = conf_sampled + 1e-7
+                consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).sum(-1).mean()
+                consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).sum(-1).mean()
+                consistency_conf_loss = consistency_conf_loss_a + consistency_conf_loss_b
+
+                ## LOC LOSS
+                consistency_loc_loss_x = torch.mean(torch.pow(loc_sampled[:, 0] + loc_sampled_flip[:, 0], exponent=2))
+                consistency_loc_loss_y = torch.mean(torch.pow(loc_sampled[:, 1] - loc_sampled_flip[:, 1], exponent=2))
+                consistency_loc_loss_w = torch.mean(torch.pow(loc_sampled[:, 2] - loc_sampled_flip[:, 2], exponent=2))
+                consistency_loc_loss_h = torch.mean(torch.pow(loc_sampled[:, 3] - loc_sampled_flip[:, 3], exponent=2))
+
+                consistency_loc_loss = torch.div(
+                    consistency_loc_loss_x + consistency_loc_loss_y + consistency_loc_loss_w + consistency_loc_loss_h,
+                    4)
+
+            else:
+                consistency_conf_loss = torch.cuda.FloatTensor([0])
+                consistency_loc_loss = torch.cuda.FloatTensor([0])
+
+            consistency_loss = torch.div(consistency_conf_loss,2) + consistency_loc_loss
+            ramp_weight = self.rampweight(self.iter)
+            consistency_loss = torch.mul(consistency_loss, ramp_weight)
+
+            # for i in range(len(rpn_feats1)):
+            #     consistency_loss += torch.nn.functional.smooth_l1_loss(box_delta1[i], box_delta2[i].flip(2).detach())
+            #     consistency_loss += torch.nn.functional.smooth_l1_loss(box_delta2[i], box_delta1[i].flip(2).detach())
 
             # for k in loss_dict2.keys():
             #     loss_dict[k] += self.cfg.SOLVER.B2_W*loss_dict2[k]
-            loss_dict["consistency_loss"] = self.cfg.SOLVER.C_W*consistency_loss
+            loss_dict_cons["consistency_loss"] = self.cfg.SOLVER.C_W*consistency_loss
+            metrics_dict["ramp_weight"] = ramp_weight
 
-        losses  = sum(loss for loss in loss_dict.values())
 
-        self._detect_anomaly(losses, loss_dict)
+        losses_cons  = sum(loss for loss in loss_dict_cons.values())
 
-        metrics_dict = loss_dict
+        self._detect_anomaly(losses_cons, loss_dict_cons)
+
         metrics_dict["data_time"] = data_time
         self._write_metrics(metrics_dict)
 
-        """
-        If you need accumulate gradients or something similar, you can
-        wrap the optimizer with your custom `zero_grad()` method.
-        """
+        # unsup step
         self.optimizer.zero_grad()
-        losses.backward()
-
-        """
-        If you need gradient clipping/scaling or other processing, you can
-        wrap the optimizer with your custom `step()` method.
-        """
+        losses_cons.backward()
         self.optimizer.step()
 
+    def rampweight(self, iteration):
+        ramp_up_end = self.cfg.SOLVER.MAX_ITER * 0.27
+        ramp_down_start = self.cfg.SOLVER.MAX_ITER * 0.83
 
+        if(iteration<ramp_up_end):
+            ramp_weight = math.exp(-5 * math.pow((1 - iteration / ramp_up_end),2))
+        elif(iteration>ramp_down_start):
+            ramp_weight = math.exp(-12.5 * math.pow((1 - (120000 - iteration) / 20000),2))
+        else:
+            ramp_weight = 1
+
+        if(iteration==0):
+            ramp_weight = 0
+
+        return ramp_weight
 
     @classmethod
     def build_model(cls, cfg):
@@ -466,7 +565,6 @@ class DefaultTrainer(SimpleTrainer):
         Overwrite it if you'd like a different data loader.
         """
         res = build_detection_train_loader_zip(cfg)
-        print("KEK!")
         return res
 
     @classmethod
