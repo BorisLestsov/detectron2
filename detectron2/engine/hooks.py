@@ -24,6 +24,8 @@ from detectron2.utils.visualizer import ColorMode, Visualizer
 from detectron2.data import MetadataCatalog
 import numpy as np
 
+import copy
+
 __all__ = [
     "CallbackHook",
     "IterationTimer",
@@ -193,7 +195,7 @@ class PeriodicVisualizer(HookBase):
         self._period = period
 
     def after_step(self):
-        data = self.trainer._last_data
+        data = copy.deepcopy(self.trainer._last_data)
 
         for v in data:
             del v["height"]
@@ -231,7 +233,7 @@ class ConsistencyVisualizer(HookBase):
         data_dict = {}
         if (self.trainer.iter+1) % self._period == 0:
             for i, data in enumerate(self.trainer._last_data):
-                data2vis = data[0]
+                data2vis = copy.deepcopy(data[0])
                 del data2vis["height"]
                 del data2vis["width"]
 

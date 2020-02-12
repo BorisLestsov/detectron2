@@ -331,11 +331,6 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     )
     dataset = DatasetFromList(dataset_dicts, copy=True)
 
-    # Bin edges for batching images with similar aspect ratios. If ASPECT_RATIO_GROUPING
-    # is enabled, we define two bins with an edge at height / width = 1.
-    group_bin_edges = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
-    aspect_ratios = [float(img["height"]) / float(img["width"]) for img in dataset]
-
     if mapper is None:
         mapper_sup = DatasetMapper(cfg, is_train=True, use_cons=False)
     dataset = MapDataset(dataset, mapper_sup)
@@ -350,17 +345,29 @@ def build_detection_train_loader_zip(cfg, mapper=None):
         )
     else:
         raise ValueError("Unknown training sampler: {}".format(sampler_name))
-    batch_sampler = build_batch_data_sampler(
-        sampler, images_per_worker, group_bin_edges, aspect_ratios
-    )
 
-    data_loader_sup = torch.utils.data.DataLoader(
-        dataset,
-        num_workers=cfg.DATALOADER.NUM_WORKERS,
-        batch_sampler=batch_sampler,
-        collate_fn=trivial_batch_collator,
-        worker_init_fn=worker_init_reset_seed,
-    )
+    if cfg.DATALOADER.ASPECT_RATIO_GROUPING:
+        data_loader_sup = torch.utils.data.DataLoader(
+            dataset,
+            sampler=sampler,
+            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            batch_sampler=None,
+            collate_fn=operator.itemgetter(0),  # don't batch, but yield individual elements
+            worker_init_fn=worker_init_reset_seed,
+        )  # yield individual mapped dict
+        data_loader_sup = AspectRatioGroupedDataset(data_loader_sup, images_per_worker)
+    else:
+        batch_sampler = torch.utils.data.sampler.BatchSampler(
+            sampler, images_per_worker, drop_last=True
+        )
+        # drop_last so the batch always have the same size
+        data_loader_sup = torch.utils.data.DataLoader(
+            dataset,
+            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            batch_sampler=batch_sampler,
+            collate_fn=trivial_batch_collator,
+            worker_init_fn=worker_init_reset_seed,
+        )
 
 
     # UNSUP
@@ -385,11 +392,6 @@ def build_detection_train_loader_zip(cfg, mapper=None):
 
     dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
 
-    # Bin edges for batching images with similar aspect ratios. If ASPECT_RATIO_GROUPING
-    # is enabled, we define two bins with an edge at height / width = 1.
-    group_bin_edges_unsup = [1] if cfg.DATALOADER.ASPECT_RATIO_GROUPING else []
-    aspect_ratios_unsup = [float(img["height"]) / float(img["width"]) for img in dataset_unsup]
-
     if mapper is None:
         mapper_unsup = DatasetMapper(cfg, is_train=True, use_cons=True)
     dataset_unsup = MapDataset(dataset_unsup, mapper_unsup)
@@ -404,17 +406,29 @@ def build_detection_train_loader_zip(cfg, mapper=None):
         )
     else:
         raise ValueError("Unknown training sampler: {}".format(sampler_name_unsup))
-    batch_sampler_unsup = build_batch_data_sampler(
-        sampler_unsup, images_per_worker, group_bin_edges_unsup, aspect_ratios_unsup
-    )
 
-    data_loader_unsup = torch.utils.data.DataLoader(
-        dataset_unsup,
-        num_workers=cfg.DATALOADER.NUM_WORKERS,
-        batch_sampler=batch_sampler_unsup,
-        collate_fn=trivial_batch_collator,
-        worker_init_fn=worker_init_reset_seed,
-    )
+    if cfg.DATALOADER.ASPECT_RATIO_GROUPING:
+        data_loader_unsup = torch.utils.data.DataLoader(
+            dataset_unsup,
+            sampler=sampler_unsup,
+            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            batch_sampler=None,
+            collate_fn=operator.itemgetter(0),  # don't batch, but yield individual elements
+            worker_init_fn=worker_init_reset_seed,
+        )  # yield individual mapped dict
+        data_loader_unsup = AspectRatioGroupedDataset(data_loader_unsup, images_per_worker)
+    else:
+        batch_sampler_unsup = torch.utils.data.sampler.BatchSampler(
+            sampler_unsup, images_per_worker, drop_last=True
+        )
+        # drop_last so the batch always have the same size
+        data_loader_unsup = torch.utils.data.DataLoader(
+            dataset_unsup,
+            num_workers=cfg.DATALOADER.NUM_WORKERS,
+            batch_sampler=batch_sampler_unsup,
+            collate_fn=trivial_batch_collator,
+            worker_init_fn=worker_init_reset_seed,
+        )
     res = (iter(data_loader_sup), iter(data_loader_unsup))
     return res
 

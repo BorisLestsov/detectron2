@@ -534,14 +534,14 @@ class DefaultTrainer(SimpleTrainer):
         self.optimizer.zero_grad()
         losses.backward()
 
-        debug_grad_names = ["backbone.bottom_up.res4.3.conv3.weight",
-                            "backbone.bottom_up.res2.0.conv3.weight",
-                            "backbone.fpn_output4.weight",
-                            "head.cls_score.weight",
-                            "head.bbox_pred.weight"]
-
-        for par_name in debug_grad_names:
-            metrics_dict["grad_norm_"+par_name] = operator.attrgetter(par_name)(self.model.module).norm()
+        # debug_grad_names = ["backbone.bottom_up.res4.3.conv3.weight",
+        #                     "backbone.bottom_up.res2.0.conv3.weight",
+        #                     "backbone.fpn_output4.weight",
+        #                     "head.cls_score.weight",
+        #                     "head.bbox_pred.weight"]
+        #
+        # for par_name in debug_grad_names:
+        #     metrics_dict["grad_norm_"+par_name] = operator.attrgetter(par_name)(self.model.module).norm()
 
         """
         If you need gradient clipping/scaling or other processing, you can

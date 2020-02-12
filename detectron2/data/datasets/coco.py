@@ -156,7 +156,8 @@ Category ids in annotations are not in [1, #categories]! We'll apply a mapping f
 
             obj = {key: anno[key] for key in ann_keys if key in anno}
 
-            segm = anno.get("segmentation", None)
+            #segm = anno.get("segmentation", None)
+            segm = None
             if segm:  # either list[list[float]] or dict(RLE)
                 if not isinstance(segm, dict):
                     # filter out invalid polygons (< 3 points)

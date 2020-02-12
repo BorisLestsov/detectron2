@@ -126,6 +126,7 @@ class DatasetMapper:
             if self.load_proposals:
                 utils.transform_proposals(
                     dataset_dict, image_shape, transforms, self.min_box_side_len, self.proposal_topk
+                )
 
             if not self.is_train:
                 dataset_dict.pop("annotations", None)
