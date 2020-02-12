@@ -29,6 +29,7 @@ __all__ = [
     "PeriodicWriter",
     "PeriodicVisualizer",
     "ConsistencyVisualizer",
+    "ACCZeroGrad",
     "PeriodicCheckpointer",
     "LRScheduler",
     "AutogradProfiler",
@@ -215,7 +216,7 @@ class ConsistencyVisualizer(HookBase):
         Periodically visualizes training images
     """
 
-    def __init__(self, model, period=20):
+    def __init__(self, model, period=20, vis_thresh=0.5):
         """
         Args:
             writers (list[EventWriter]): a list of EventWriter objects
@@ -223,6 +224,7 @@ class ConsistencyVisualizer(HookBase):
         """
         self.model = model
         self._period = period
+        self.vis_thresh = vis_thresh
 
     def after_step(self):
         data_dict = {}
@@ -232,7 +234,6 @@ class ConsistencyVisualizer(HookBase):
                 del data2vis["height"]
                 del data2vis["width"]
 
-                # TODO: add score threshold SCORE_THRESH_TEST -> SCORE_THRESH_VIS
                 self.model.eval()
                 with torch.no_grad():
                     pred = self.model(data)
@@ -261,6 +262,9 @@ class ConsistencyVisualizer(HookBase):
                         )
                     if "instances" in predictions:
                         instances = predictions["instances"].to(cpu_device)
+                        if i in [1, 2]:
+                            idx = instances.scores > self.vis_thresh
+                            instances = instances[idx]
                         vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
                 vis = visualizer.get_output()
@@ -302,6 +306,22 @@ class PeriodicCheckpointer(_PeriodicCheckpointer, HookBase):
     def after_step(self):
         # No way to use **kwargs
         self.step(self.trainer.iter)
+
+class ACCZeroGrad(HookBase):
+    """
+    Same as :class:`detectron2.checkpoint.PeriodicCheckpointer`, but as a hook.
+
+    Note that when used as a hook,
+    it is unable to save additional data other than what's defined
+    by the given `checkpointer`.
+
+    It is executed every ``period`` iterations and after the last iteration.
+    """
+    def __init__(self, optimizer):
+        self.optimizer = optimizer
+
+    def before_train(self):
+        self.optimizer.zero_grad()
 
 
 class LRScheduler(HookBase):

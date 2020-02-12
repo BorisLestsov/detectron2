@@ -48,6 +48,7 @@ import torch
 import math
 import torch.nn as nn
 import torch.nn.functional as F
+import operator
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -302,7 +303,7 @@ class DefaultTrainer(SimpleTrainer):
             else None,
         ]
 
-        ret.append(hooks.ConsistencyVisualizer(self.model, cfg.SOLVER.VIS_PERIOD))
+        ret.append(hooks.ConsistencyVisualizer(self.model, cfg.SOLVER.VIS_PERIOD, cfg.SOLVER.VIS_THRESH))
 
         # Do PreciseBN before checkpointer, because it updates the model and need to
         # be saved by checkpointer.
@@ -410,12 +411,14 @@ class DefaultTrainer(SimpleTrainer):
             loc = torch.cat([o.view(o.size(0), -1) for o in box_delta1], 1)
             conf = torch.cat([o.view(o.size(0), -1) for o in box_cls1], 1)
             loc = loc.view(loc.size(0), -1, 4)
-            conf = self.softmax(conf.view(conf.size(0), -1, num_classes))
+            #conf = self.softmax(conf.view(conf.size(0), -1, num_classes))
+            conf = (conf.view(conf.size(0), -1, num_classes)).sigmoid()
 
             loc_flip = torch.cat([o.view(o.size(0), -1) for o in box_delta2], 1)
             conf_flip = torch.cat([o.view(o.size(0), -1) for o in box_cls2], 1)
             loc_flip = loc_flip.view(loc_flip.size(0), -1, 4)
-            conf_flip = self.softmax(conf_flip.view(conf.size(0), -1, num_classes))
+            #conf_flip = self.softmax(conf_flip.view(conf.size(0), -1, num_classes))
+            conf_flip = (conf_flip.view(conf.size(0), -1, num_classes)).sigmoid()
 
             # https://github.com/soo89/CSD-SSD/blob/master/train_csd.py#L267
             sampling = True
@@ -428,12 +431,10 @@ class DefaultTrainer(SimpleTrainer):
 
                 # TODO: check this
                 be_thresh = 0.5
-                mask_val = conf > be_thresh
+                mask_val = (conf.clone().detach() > be_thresh).any(dim=2)
 
-                # mask_conf_index = mask_val.unsqueeze(2).expand_as(conf)
-                # mask_loc_index = mask_val.unsqueeze(2).expand_as(loc)
-                mask_conf_index = mask_val
-                mask_loc_index = mask_val.any(dim=2).unsqueeze(2).expand_as(loc)
+                mask_conf_index = mask_val.unsqueeze(2).expand_as(conf)
+                mask_loc_index = mask_val.unsqueeze(2).expand_as(loc)
 
                 conf_mask_sample = conf.clone()
                 loc_mask_sample = loc.clone()
@@ -442,6 +443,7 @@ class DefaultTrainer(SimpleTrainer):
 
                 conf_mask_sample_flip = conf_flip.clone()
                 loc_mask_sample_flip = loc_flip.clone()
+
                 # TODO: wtf, conf_index to flipped pred?
                 conf_sampled_flip = conf_mask_sample_flip[mask_conf_index].view(-1, num_classes)
                 loc_sampled_flip = loc_mask_sample_flip[mask_loc_index].view(-1, 4)
@@ -450,8 +452,10 @@ class DefaultTrainer(SimpleTrainer):
                 ## JSD !!!!!1
                 conf_sampled_flip = conf_sampled_flip + 1e-7
                 conf_sampled = conf_sampled + 1e-7
-                consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).sum(-1).mean()
-                consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).sum(-1).mean()
+                # consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).sum(-1).mean()
+                # consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).sum(-1).mean()
+                consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).mean()
+                consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).mean()
                 consistency_conf_loss = consistency_conf_loss_a + consistency_conf_loss_b
 
                 ## LOC LOSS
@@ -489,7 +493,6 @@ class DefaultTrainer(SimpleTrainer):
         metrics_dict["data_time"] = data_time
         if not ramp_weight is None:
             metrics_dict["ramp_weight"] = ramp_weight
-        self._write_metrics(metrics_dict)
 
         """
         If you need accumulate gradients or something similar, you can
@@ -498,20 +501,31 @@ class DefaultTrainer(SimpleTrainer):
         self.optimizer.zero_grad()
         losses.backward()
 
+        debug_grad_names = ["backbone.bottom_up.res4.3.conv3.weight",
+                            "backbone.bottom_up.res2.0.conv3.weight",
+                            "backbone.fpn_output4.weight",
+                            "head.cls_score.weight",
+                            "head.bbox_pred.weight"]
+
+        for par_name in debug_grad_names:
+            metrics_dict["grad_norm_"+par_name] = operator.attrgetter(par_name)(self.model.module).norm()
+
         """
         If you need gradient clipping/scaling or other processing, you can
         wrap the optimizer with your custom `step()` method.
         """
         self.optimizer.step()
+        self._write_metrics(metrics_dict)
 
     def rampweight(self, iteration):
-        ramp_up_end = self.cfg.SOLVER.MAX_ITER * 0.27
-        ramp_down_start = self.cfg.SOLVER.MAX_ITER * 0.83
+        max_iter = self.cfg.SOLVER.MAX_ITER
+        ramp_up_end = max_iter * 0.27
+        ramp_down_start = max_iter * 0.83
 
         if(iteration<ramp_up_end):
             ramp_weight = math.exp(-5 * math.pow((1 - iteration / ramp_up_end),2))
         elif(iteration>ramp_down_start):
-            ramp_weight = math.exp(-12.5 * math.pow((1 - (120000 - iteration) / 20000),2))
+            ramp_weight = math.exp(-12.5 * math.pow((1 - (max_iter - iteration) / (max_iter - ramp_down_start)),2))
         else:
             ramp_weight = 1
 
