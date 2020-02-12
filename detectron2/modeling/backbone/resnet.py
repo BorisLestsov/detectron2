@@ -272,6 +272,7 @@ class DeformBottleneckBlock(ResNetBlockBase):
 def make_stage(block_class, num_blocks, first_stride, **kwargs):
     """
     Create a resnet stage by creating many blocks.
+
     Args:
         block_class (class): a subclass of ResNetBlockBase
         num_blocks (int):
@@ -365,7 +366,7 @@ class ResNet(Backbone):
             # Sec 5.1 in "Accurate, Large Minibatch SGD: Training ImageNet in 1 Hour":
             # "The 1000-way fully-connected layer is initialized by
             # drawing weights from a zero-mean Gaussian with standard deviation of 0.01."
-            nn.init.normal_(self.linear.weight, stddev=0.01)
+            nn.init.normal_(self.linear.weight, std=0.01)
             name = "linear"
 
         if out_features is None:
@@ -387,6 +388,7 @@ class ResNet(Backbone):
                 outputs[name] = x
         if self.num_classes is not None:
             x = self.avgpool(x)
+            x = torch.flatten(x, 1)
             x = self.linear(x)
             if "linear" in self._out_features:
                 outputs["linear"] = x

@@ -4,29 +4,34 @@
 
 This file documents a large collection of baselines trained
 with detectron2 in Sep-Oct, 2019.
-The corresponding configurations for all models can be found under the `configs/` directory.
-Unless otherwise noted, the following settings are used for all runs:
+All numbers were obtained on [Big Basin](https://engineering.fb.com/data-center-engineering/introducing-big-basin-our-next-generation-ai-hardware/)
+servers with 8 NVIDIA V100 GPUs & NVLink. The softwares in use were PyTorch 1.3, CUDA 9.2, cuDNN 7.4.2 or 7.6.3.
+You can access these models from code using [detectron2.model_zoo](https://detectron2.readthedocs.io/modules/model_zoo.html) APIs.
 
-#### Common Settings
-* All models were trained on [Big Basin](https://engineering.fb.com/data-center-engineering/introducing-big-basin-our-next-generation-ai-hardware/)
-  servers with 8 NVIDIA V100 GPUs, with data-parallel sync SGD and a total minibatch size of 16 images.
-* All models were trained with CUDA 9.2, cuDNN 7.4.2 or 7.6.3 (the difference in speed is found to be negligible).
-* Training curves and other statistics can be found in `metrics` for each model.
-* The default settings are __not directly comparable__ with Detectron.
-  For example, our default training data augmentation uses scale jittering in addition to horizontal flipping.
-
-  For configs that are comparable to Detectron's settings, see
-  [Detectron1-Comparisons](configs/Detectron1-Comparisons/) for accuracy comparison,
-  and [benchmarks](https://detectron2.readthedocs.io/notes/benchmarks.html)
-  for speed comparison.
-* Inference speed is measured by `tools/train_net.py --eval-only`, or [inference_on_dataset()](https://detectron2.readthedocs.io/modules/evaluation.html#detectron2.evaluation.inference_on_dataset),
-  with batch size 1 in detectron2 directly.
-  The actual deployment should in general be faster than the given inference
-  speed due to more optimizations.
+#### How to Read the Tables
+* The "Name" column contains a link to the config file. Running `tools/train_net.py` with this config file
+	and 8 GPUs will reproduce the model.
 * Training speed is averaged across the entire training.
 	We keep updating the speed with latest version of detectron2/pytorch/etc.,
 	so they might be different from the `metrics` file.
+* Inference speed is measured by `tools/train_net.py --eval-only`, or [inference_on_dataset()](https://detectron2.readthedocs.io/modules/evaluation.html#detectron2.evaluation.inference_on_dataset),
+  with batch size 1 in detectron2 directly.
+	Measuring it with your own code will likely introduce other overhead.
+  Actual deployment in production should in general be faster than the given inference
+  speed due to more optimizations.
+* The *model id* column is provided for ease of reference.
+  To check downloaded file integrity, any model on this page contains its md5 prefix in its file name.
+* Training curves and other statistics can be found in `metrics` for each model.
+
+#### Common Settings for COCO Models
 * All COCO models were trained on `train2017` and evaluated on `val2017`.
+* The default settings are __not directly comparable__ with Detectron's standard settings.
+  For example, our default training data augmentation uses scale jittering in addition to horizontal flipping.
+
+  To make fair comparisons with Detectron's settings, see
+  [Detectron1-Comparisons](configs/Detectron1-Comparisons/) for accuracy comparison,
+  and [benchmarks](https://detectron2.readthedocs.io/notes/benchmarks.html)
+  for speed comparison.
 * For Faster/Mask R-CNN, we provide baselines based on __3 different backbone combinations__:
   * __FPN__: Use a ResNet+FPN backbone with standard conv and FC heads for mask and box prediction,
     respectively. It obtains the best
@@ -38,14 +43,11 @@ Unless otherwise noted, the following settings are used for all runs:
 * Most models are trained with the 3x schedule (~37 COCO epochs).
   Although 1x models are heavily under-trained, we provide some ResNet-50 models with the 1x (~12 COCO epochs)
   training schedule for comparison when doing quick research iteration.
-* The *model id* column is provided for ease of reference.
-  To check downloaded file integrity, any model on this page contains its md5 prefix in its file name.
-	Each model also comes with a metrics file with all the training statistics and evaluation curves.
 
 #### ImageNet Pretrained Models
 
 We provide backbone models pretrained on ImageNet-1k dataset.
-These models are __different__ from those provided in Detectron: we do not fuse BatchNorm into an affine layer.
+These models have __different__ format from those provided in Detectron: we do not fuse BatchNorm into an affine layer.
 * [R-50.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-50.pkl): converted copy of MSRA's original ResNet-50 model
 * [R-101.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/MSRA/R-101.pkl): converted copy of MSRA's original ResNet-101 model
 * [X-101-32x8d.pkl](https://dl.fbaipublicfiles.com/detectron2/ImageNetPretrained/FAIR/X-101-32x8d.pkl): ResNeXt-101-32x8d model trained with Caffe2 at FB
