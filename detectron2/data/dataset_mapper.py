@@ -1,7 +1,6 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import copy
 import logging
-
 import numpy as np
 import torch
 from fvcore.common.file_io import PathManager
@@ -23,9 +22,12 @@ class DatasetMapper:
     and map it into a format used by the model.
 
     This is the default callable to be used to map your dataset dict into training data.
-    You may need to follow it to implement your own one for customized logic.
+    You may need to follow it to implement your own one for customized logic,
+    such as a different way to read or transform images.
+    See :doc:`/tutorials/data_loading` for details.
 
     The callable currently does the following:
+
     1. Read the image from "file_name"
     2. Applies cropping/geometric transforms to the image and annotations
     3. Prepare data and annotations to Tensor and :class:`Instances`
@@ -124,7 +126,6 @@ class DatasetMapper:
             if self.load_proposals:
                 utils.transform_proposals(
                     dataset_dict, image_shape, transforms, self.min_box_side_len, self.proposal_topk
-                )
 
             if not self.is_train:
                 dataset_dict.pop("annotations", None)

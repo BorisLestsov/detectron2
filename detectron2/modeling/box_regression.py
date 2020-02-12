@@ -157,10 +157,7 @@ class Box2BoxTransformRotated(object):
         # Angles of deltas are in radians while angles of boxes are in degrees.
         # the conversion to radians serve as a way to normalize the values
         da = target_angles - src_angles
-        while len(torch.where(da < -180.0)[0]) > 0:
-            da[torch.where(da < -180.0)] += 360.0
-        while len(torch.where(da > 180.0)[0]) > 0:
-            da[torch.where(da > 180.0)] -= 360.0
+        da = (da + 180.0) % 360.0 - 180.0  # make it in [-180, 180)
         da *= wa * math.pi / 180.0
 
         deltas = torch.stack((dx, dy, dw, dh, da), dim=1)
@@ -183,15 +180,19 @@ class Box2BoxTransformRotated(object):
 
         boxes = boxes.to(deltas.dtype)
 
-        ctr_x, ctr_y, widths, heights, angles = torch.unbind(boxes, dim=1)
-        wx, wy, ww, wh, wa = self.weights
-        dx, dy, dw, dh, da = torch.unbind(deltas, dim=1)
+        ctr_x = boxes[:, 0]
+        ctr_y = boxes[:, 1]
+        widths = boxes[:, 2]
+        heights = boxes[:, 3]
+        angles = boxes[:, 4]
 
-        dx.div_(wx)
-        dy.div_(wy)
-        dw.div_(ww)
-        dh.div_(wh)
-        da.div_(wa)
+        wx, wy, ww, wh, wa = self.weights
+
+        dx = deltas[:, 0] / wx
+        dy = deltas[:, 1] / wy
+        dw = deltas[:, 2] / ww
+        dh = deltas[:, 3] / wh
+        da = deltas[:, 4] / wa
 
         # Prevent sending too large values into torch.exp()
         dw = torch.clamp(dw, max=self.scale_clamp)
@@ -206,11 +207,7 @@ class Box2BoxTransformRotated(object):
         # Following original RRPN implementation,
         # angles of deltas are in radians while angles of boxes are in degrees.
         pred_angle = da * 180.0 / math.pi + angles
-
-        while len(torch.where(pred_angle < -180.0)[0]) > 0:
-            pred_angle[torch.where(pred_angle < -180.0)] += 360.0
-        while len(torch.where(pred_angle > 180.0)[0]) > 0:
-            pred_angle[torch.where(pred_angle > 180.0)] -= 360.0
+        pred_angle = (pred_angle + 180.0) % 360.0 - 180.0  # make it in [-180, 180)
 
         pred_boxes[:, 4] = pred_angle
 
