@@ -25,6 +25,7 @@ from detectron2.data import MetadataCatalog
 import numpy as np
 
 import copy
+from detectron2.modeling.postprocessing import detector_postprocess
 
 __all__ = [
     "CallbackHook",
@@ -219,23 +220,26 @@ class ConsistencyVisualizer(HookBase):
         Periodically visualizes training images
     """
 
-    def __init__(self, model, period=20, vis_thresh=0.5):
+    def __init__(self, model, metadata, period=20, vis_thresh=0.5):
         """
         Args:
             writers (list[EventWriter]): a list of EventWriter objects
             period (int):
         """
         self.model = model
+        self.metadata = MetadataCatalog.get(metadata)
         self._period = period
         self.vis_thresh = vis_thresh
 
     def after_step(self):
         data_dict = {}
         if (self.trainer.iter+1) % self._period == 0:
-            for i, data in enumerate(self.trainer._last_data):
+            data_list = [d for d in self.trainer._last_data if "data" in d["name"]]
+            img_list  = [d for d in self.trainer._last_data if "img"  in d["name"]]
+            for i, d in enumerate(data_list):
+                name = d["name"]
+                data = d["data"]
                 data2vis = copy.deepcopy(data[0])
-                del data2vis["height"]
-                del data2vis["width"]
 
                 self.model.eval()
                 with torch.no_grad():
@@ -250,7 +254,8 @@ class ConsistencyVisualizer(HookBase):
                 predictions = predictions_all[0]
                 #predictions = {'instances': predictions['instances'][0]}
 
-                visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
+                # TODO: CATALOG!
+                visualizer = Visualizer(img, metadata=self.metadata, instance_mode=ColorMode.IMAGE)
 
                 cpu_device = torch.device("cpu")
                 if "panoptic_seg" in predictions:
@@ -265,9 +270,9 @@ class ConsistencyVisualizer(HookBase):
                         )
                     if "instances" in predictions:
                         instances = predictions["instances"].to(cpu_device)
-                        if i in [1, 2]:
-                            idx = instances.scores > self.vis_thresh
-                            instances = instances[idx]
+                        idx = instances.scores > self.vis_thresh
+                        instances = instances[idx]
+                        detector_postprocess(instances, img.shape[0], img.shape[1])
                         vis_output = visualizer.draw_instance_predictions(predictions=instances)
 
                 vis = visualizer.get_output()
@@ -276,15 +281,20 @@ class ConsistencyVisualizer(HookBase):
                 res = res[:, :, ::-1]
                 res = res.transpose(2,0,1)
 
-                visualizer = Visualizer(img, metadata=MetadataCatalog.get("coco_2017_val"), instance_mode=ColorMode.IMAGE)
+                visualizer = Visualizer(img, metadata=self.metadata, instance_mode=ColorMode.IMAGE)
                 instances = data2vis["instances"].to(cpu_device)
                 img = visualizer.draw_instance_gt(predictions=instances).get_image()
 
                 img = img[:, :, ::-1]
                 img = img.transpose(2,0,1)
 
-                data_dict["data{}".format(i)] = [img]
-                data_dict["pred{}".format(i)] = [res]
+                data_dict[name] = [img]
+                data_dict["pred_{}".format(name)] = [res]
+
+            for i, d in enumerate(img_list):
+                name = d["name"]
+                img = d["img"]
+                data_dict[name] = [img]
 
             self.trainer._write_data(data_dict)
 

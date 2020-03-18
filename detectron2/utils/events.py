@@ -138,7 +138,7 @@ class TensorboardXWriter(EventWriter):
         if "latest_data" in latest_data:
             latest_data = latest_data["latest_data"]
             for k, v in latest_data.items():
-                if 'data' in k or 'pred' in k:
+                if 'data' in k or 'pred' in k or 'img' in k:
                     name = k
                     data = v[0]
                     self._writer.add_image(name, data, storage.iter)

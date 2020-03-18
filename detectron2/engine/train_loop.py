@@ -272,6 +272,9 @@ class SimpleTrainer(TrainerBase):
                 # caused by data_time is the maximum among workers.
                 data_time = np.max([x.pop("data_time") for x in all_metrics_dict])
                 self.storage.put_scalar("data_time", data_time)
+            if "ramp_weight" in all_metrics_dict[0]:
+                ramp_weight = np.max([x.pop("ramp_weight") for x in all_metrics_dict])
+                self.storage.put_scalar("ramp_weight", ramp_weight)
 
             # average the rest metrics
             metrics_dict = {

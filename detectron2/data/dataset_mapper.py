@@ -43,7 +43,7 @@ class DatasetMapper:
         self.add_trans = [T.RandomFlip(prob=1.0)]
         self.cons     = use_cons
 
-        tfm_gens = utils.build_transform_gen(cfg, is_train)
+        tfm_gens = utils.build_transform_gen(cfg, is_train, hard_aug=self.cons)
         self.static_tfm_gens, self.dynamic_tfm_gens = tfm_gens[:1], tfm_gens[1:]
 
         # fmt: off

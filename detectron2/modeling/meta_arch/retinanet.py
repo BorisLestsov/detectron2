@@ -127,6 +127,8 @@ class RetinaNet(nn.Module):
         else:
             gt_instances = None
 
+        self.last_images = images.tensor
+
         features = self.backbone(images.tensor)
         features = [features[f] for f in self.in_features]
         box_cls, box_delta = self.head(features)
