@@ -435,7 +435,7 @@ def check_metadata_consistency(key, dataset_names):
             raise ValueError("Datasets have different metadata '{}'!".format(key))
 
 
-def build_transform_gen(cfg, is_train, hard_aug=False):
+def build_transform_gen(cfg, is_train, hard_aug=False, anno_modify=False):
     """
     Create a list of :class:`TransformGen` from config.
     Now it includes resizing and flipping.
@@ -459,10 +459,10 @@ def build_transform_gen(cfg, is_train, hard_aug=False):
     logger = logging.getLogger(__name__)
     tfm_gens = []
 
-    #tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
-    tfm_gens.append(T.Resize(max_size))
+    tfm_gens.append(T.ResizeShortestEdge(min_size, max_size, sample_style))
+    # tfm_gens.append(T.Resize(max_size))
     if is_train:
-        if cfg.INPUT.USE_TRAIN_AUG_HARD and hard_aug:
+        if hard_aug:
             tfm_gens.append(T.RandomContrast(0.5, 2))
             tfm_gens.append(T.RandomBrightness(0.5, 2))
             tfm_gens.append(T.RandomSaturation(0.5, 2))
@@ -470,7 +470,7 @@ def build_transform_gen(cfg, is_train, hard_aug=False):
             # tfm_gens.append(T.Cutout((128, 128), cfg.MODEL.PIXEL_MEAN))
             pass
 
-        if cfg.INPUT.USE_TRAIN_AUG_ANNO_MODIFY:
+        if anno_modify:
             tfm_gens.append(T.RandomFlip())
     logger.info("TransformGens used: " + str(tfm_gens))
     return tfm_gens

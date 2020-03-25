@@ -51,6 +51,9 @@ import torch.nn.functional as F
 import operator
 import numpy as np
 
+from detectron2.modeling.postprocessing import detector_postprocess
+from detectron2.structures import Instances
+
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
 
@@ -422,159 +425,45 @@ class DefaultTrainer(SimpleTrainer):
 
         loss_dict = {}
         for k in loss_dict_sup.keys():
-            loss_dict[k] = self.cfg.SOLVER.B1_W*loss_dict_sup[k]
+            mult = 1.0 #if self.iter % 4 == 0 else 0.0
+            loss_dict[k] = mult * self.cfg.SOLVER.B1_W*loss_dict_sup[k]
 
         ramp_weight = None
         if self.cfg.SOLVER.USE_CONS:
             data1 = [i[0] for i in all_data_unsup]
             data2 = [i[1] for i in all_data_unsup]
+
+            # GET PS
+            self.model.eval()
+            with torch.no_grad():
+                pred = self.model(data1)
+            self.model.train()
+
+            for i, d in enumerate(data1):
+                ps_thresh = 0.95
+                instances = pred[i]["instances"].to(torch.device("cpu"))
+                idx = instances.scores > ps_thresh
+                instances = instances[idx]
+
+                img = data1[i]["image"]
+                h, w = img.shape[1], img.shape[2]
+                detector_postprocess(instances, h, w)
+
+                result = Instances((h,w))
+                result.gt_boxes = instances.pred_boxes
+                result.gt_classes = instances.pred_classes
+
+                data2[i]["instances"] = result
+
+            _, consistency_loss = self.model(data2, ignore_bg=True)
+
             self._last_data.append({"name" : "data1", "data": data1})
             self._last_data.append({"name" : "data2", "data": data2})
 
-            (box_cls1, box_delta1), _ = self.model(data1)
-            images1 = self.model.module.last_images.clone().detach().cpu().numpy()[0]
-            (box_cls2, box_delta2), _ = self.model(data2)
-            images2 = self.model.module.last_images.clone().detach().cpu().numpy()[0]
-
-            sampling = True
-            if(sampling is True):
-                be_thresh = 0.5
-            else:
-                be_thresh = 0.0
-
-            shapes = [tens.shape for tens in box_cls1]
-            for l in range(len(box_cls1)):
-                box_cls1[l] = box_cls1[l].permute(0, 2, 3, 1).contiguous()
-                box_delta1[l] = box_delta1[l].permute(0, 2, 3, 1).contiguous()
-                box_cls2[l] = box_cls2[l].permute(0, 2, 3, 1).contiguous().flip(2)
-                box_delta2[l] = box_delta2[l].permute(0, 2, 3, 1).contiguous().flip(2)
-
-                size = data1[0]["image"].shape[1:]
-                if (self.iter+1) % self.cfg.SOLVER.VIS_PERIOD == 0:
-                    with torch.no_grad():
-                        res1 = np.ones(shape=images1.shape, dtype=np.uint8)*255
-                        res1[images1 < 1e-6] = 0.0
-                        self._last_data.append({"name": "img_dafaq1", "img": res1})
-                        res2 = np.ones(shape=images2.shape, dtype=np.uint8)*255
-                        res2[images2 < 1e-6] = 0.0
-                        self._last_data.append({"name": "img_dafaq2", "img": res2})
-                        vis1 = box_cls1[l][0].clone().sigmoid()
-                        vis2 = box_cls2[l][0].clone().sigmoid()
-
-                        mask_vis = True
-                        if mask_vis:
-                            fg_idx = (vis1 > be_thresh).any(dim=-1)
-                            vis1[~fg_idx] = 0.0
-                            vis2[~fg_idx] = 0.0
-
-                        res1 = vis1.sum(dim=-1).unsqueeze(0).unsqueeze(0)
-                        res1 = torch.nn.functional.interpolate(res1, size)[0][0]
-
-                        res1 -= res1.min()
-                        res1 /= res1.max()
-                        res1 *= 255
-                        res1 = res1.cpu().numpy().astype(np.uint8)
-                        res1 = np.dstack([res1, res1, res1])
-                        res1 = res1.transpose(2,0,1)
-
-                        res2 = vis2.sum(dim=-1).unsqueeze(0).unsqueeze(0)
-                        res2 = torch.nn.functional.interpolate(res2, size)[0][0]
-
-                        res2 -= res2.min()
-                        res2 /= res2.max()
-                        res2 *= 255
-                        res2 = res2.cpu().numpy().astype(np.uint8)
-                        res2 = np.dstack([res2, res2, res2])
-                        res2 = res2.transpose(2,0,1)
-
-                        res_diff = (vis1 - vis2).abs().sum(dim=-1).unsqueeze(0).unsqueeze(0)
-                        res_diff = torch.nn.functional.interpolate(res_diff, size)[0][0]
-                        res_diff -= res_diff.min()
-                        res_diff /= res_diff.max()
-                        res_diff *= 255
-                        res_diff = res_diff.cpu().numpy().astype(np.uint8)
-                        res_diff = np.dstack([res_diff, res_diff, res_diff])
-                        res_diff = res_diff.transpose(2,0,1)
-
-                        sep = np.zeros(shape=(res1.shape[1], 2, 3), dtype=np.uint8)
-                        sep[..., 1] = 255
-                        sep = sep.transpose(2,0,1)
-                        res = np.concatenate([res1, sep, res2, sep, res_diff], axis=2)
-
-                        self._last_data.append({"name": "box_cls_img{}".format(l), "img": res})
-
-
-            num_classes = self.model.module.num_classes
-
-            loc = torch.cat([o.view(o.size(0), -1) for o in box_delta1], 1)
-            conf = torch.cat([o.view(o.size(0), -1) for o in box_cls1], 1)
-            loc = loc.view(loc.size(0), -1, 4)
-            #conf = self.softmax(conf.view(conf.size(0), -1, num_classes))
-            conf = (conf.view(conf.size(0), -1, num_classes)).sigmoid()
-
-            loc_flip = torch.cat([o.view(o.size(0), -1) for o in box_delta2], 1)
-            conf_flip = torch.cat([o.view(o.size(0), -1) for o in box_cls2], 1)
-            loc_flip = loc_flip.view(loc_flip.size(0), -1, 4)
-            #conf_flip = self.softmax(conf_flip.view(conf.size(0), -1, num_classes))
-            conf_flip = (conf_flip.view(conf.size(0), -1, num_classes)).sigmoid()
-
-
-            # TODO: check this
-            mask_val = (conf.clone().detach() > be_thresh).any(dim=2)
-
-            mask_conf_index = mask_val.unsqueeze(2).expand_as(conf)
-            mask_loc_index = mask_val.unsqueeze(2).expand_as(loc)
-
-            conf_mask_sample = conf.clone()
-            loc_mask_sample = loc.clone()
-            conf_sampled = conf_mask_sample[mask_conf_index].view(-1, num_classes)
-            loc_sampled = loc_mask_sample[mask_loc_index].view(-1, 4)
-
-            conf_mask_sample_flip = conf_flip.clone()
-            loc_mask_sample_flip = loc_flip.clone()
-
-            # TODO: wtf, conf_index to flipped pred?
-            conf_sampled_flip = conf_mask_sample_flip[mask_conf_index].view(-1, num_classes)
-            loc_sampled_flip = loc_mask_sample_flip[mask_loc_index].view(-1, 4)
-
-            if(mask_val.sum()>0):
-                ## JSD !!!!!1
-                conf_sampled_flip = conf_sampled_flip + 1e-6
-                conf_sampled = conf_sampled + 1e-6
-                consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).sum(-1).mean()
-                consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).sum(-1).mean()
-                # consistency_conf_loss_a = self.conf_consistency_criterion(conf_sampled.log(), conf_sampled_flip.detach()).mean()
-                # consistency_conf_loss_b = self.conf_consistency_criterion(conf_sampled_flip.log(), conf_sampled.detach()).mean()
-                # consistency_conf_loss_a = (conf_sampled.log() - conf_sampled_flip.detach().log()).abs().mean()
-                # consistency_conf_loss_b = (conf_sampled_flip.log() - conf_sampled.detach().log()).abs().mean()
-                consistency_conf_loss = consistency_conf_loss_a + consistency_conf_loss_b
-
-                ## LOC LOSS
-                consistency_loc_loss_x = torch.mean(torch.pow(loc_sampled[:, 0] + loc_sampled_flip[:, 0], exponent=2))
-                consistency_loc_loss_y = torch.mean(torch.pow(loc_sampled[:, 1] - loc_sampled_flip[:, 1], exponent=2))
-                consistency_loc_loss_w = torch.mean(torch.pow(loc_sampled[:, 2] - loc_sampled_flip[:, 2], exponent=2))
-                consistency_loc_loss_h = torch.mean(torch.pow(loc_sampled[:, 3] - loc_sampled_flip[:, 3], exponent=2))
-
-                consistency_loc_loss = torch.div(
-                    consistency_loc_loss_x + consistency_loc_loss_y + consistency_loc_loss_w + consistency_loc_loss_h,
-                    4)
-
-            else:
-                consistency_conf_loss = torch.cuda.FloatTensor([0])
-                consistency_loc_loss = torch.cuda.FloatTensor([0])
-
-            consistency_loss = torch.div(consistency_conf_loss,2) + consistency_loc_loss
-            #ramp_weight = 1.0
-            ramp_weight = self.rampweight(self.iter)
-            consistency_loss = torch.mul(consistency_loss, ramp_weight)
-
-            # for i in range(len(rpn_feats1)):
-            #     consistency_loss += torch.nn.functional.smooth_l1_loss(box_delta1[i], box_delta2[i].flip(2).detach())
-            #     consistency_loss += torch.nn.functional.smooth_l1_loss(box_delta2[i], box_delta1[i].flip(2).detach())
-
-            # for k in loss_dict2.keys():
-            #     loss_dict[k] += self.cfg.SOLVER.B2_W*loss_dict2[k]
-            loss_dict["consistency_loss"] = self.cfg.SOLVER.C_W*consistency_loss
+            for k, v in consistency_loss.items():
+                ramp_weight = 1.0 if self.iter > 3000 else 0.0
+                # ramp_weight = self.rampweight(self.iter)
+                loss_dict[k + "_cons"] = ramp_weight * self.cfg.SOLVER.C_W * v
 
 
         losses  = sum(loss for loss in loss_dict.values())

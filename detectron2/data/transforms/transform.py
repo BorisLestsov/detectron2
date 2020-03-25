@@ -6,7 +6,9 @@ import numpy as np
 from fvcore.transforms.transform import HFlipTransform, NoOpTransform, Transform
 from PIL import Image
 
-__all__ = ["ExtentTransform", "ResizeTransform", "CutoutTransform"]
+from .ctaug import apply as ctapply
+
+__all__ = ["ExtentTransform", "ResizeTransform", "CutoutTransform", "CTAugTransform"]
 
 
 class ExtentTransform(Transform):
@@ -87,6 +89,34 @@ class ResizeTransform(Transform):
     def apply_coords(self, coords):
         coords[:, 0] = coords[:, 0] * (self.new_w * 1.0 / self.w)
         coords[:, 1] = coords[:, 1] * (self.new_h * 1.0 / self.h)
+        return coords
+
+    def apply_segmentation(self, segmentation):
+        segmentation = self.apply_image(segmentation, interp=Image.NEAREST)
+        return segmentation
+
+class CTAugTransform(Transform):
+    """
+    Resize the image to a target size.
+    """
+
+    def __init__(self, ops):
+        """
+        Args:
+        """
+        ops = ops
+        super().__init__()
+        self._set_attributes(locals())
+
+    def apply_image(self, img, interp=None):
+        pil_image = Image.fromarray(img)
+        pil_image = ctapply(pil_image, self.ops)
+        ret = np.asarray(pil_image)
+        # print(ret.shape, ret.dtype, ret.min(), ret.max())
+        return ret
+
+    def apply_coords(self, coords):
+        # TODO remove coords completely in cropped region
         return coords
 
     def apply_segmentation(self, segmentation):

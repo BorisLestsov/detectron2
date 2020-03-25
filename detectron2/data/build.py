@@ -252,23 +252,53 @@ def get_detection_dataset_dicts(
         except AttributeError:  # class names are not available for this dataset
             pass
 
-    d = dict()
-    for ann in dataset_dicts:
-        for ent in ann["annotations"]:
-            cat = ent["category_id"]
-            d[cat] = d.get(cat, 0) + 1
+        d = dict()
+        for ann in dataset_dicts:
+            for ent in ann["annotations"]:
+                cat = ent["category_id"]
+                d[cat] = d.get(cat, 0) + 1
 
-    d2 = dict()
-    for k, v in d.items():
-        d2[k] = int(round(v*frac))
+    if frac > 1:
+        frac = int(frac)
+
+    if frac <= 1:
+        d2 = dict()
+        for k, v in d.items():
+            d2[k] = int(round(v*frac))
+    else:
+        d2 = dict()
+        for k, v in d.items():
+            d2[k] = frac
 
     new_dataset_dicts = []
-    for ann in dataset_dicts:
+    if frac <= 1:
+        for ann in dataset_dicts:
+            add = False
+            for ent in ann["annotations"]:
+                cat = ent["category_id"]
+                if d2[cat] > 0:
+                    add = True
+            if add:
+                for ent in ann["annotations"]:
+                    cat = ent["category_id"]
+                    d2[cat] -= 1
+                new_dataset_dicts.append(ann)
+    else:
+        raise Exception("lolkek")
         add = False
         for ent in ann["annotations"]:
             cat = ent["category_id"]
             if d2[cat] > 0:
                 add = True
+                break
+
+        if add:
+            for ent in ann["annotations"]:
+                cat = ent["category_id"]
+                if d2[cat] <= 0:
+                    add = False
+                    break
+
         if add:
             for ent in ann["annotations"]:
                 cat = ent["category_id"]
@@ -278,6 +308,7 @@ def get_detection_dataset_dicts(
     # print(d2)
     # print(len(new_dataset_dicts), len(dataset_dicts))
     dataset_dicts = new_dataset_dicts
+
 
     return dataset_dicts
 
@@ -332,7 +363,7 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     dataset = DatasetFromList(dataset_dicts, copy=True)
 
     if mapper is None:
-        mapper_sup = DatasetMapper(cfg, is_train=True, use_cons=False)
+        mapper_sup = DatasetMapper(cfg, is_train=True, use_cons=False, use_hard_aug=cfg.INPUT.USE_TRAIN_AUG_HARD, use_anno_modify=cfg.INPUT.USE_TRAIN_AUG_ANNO_MODIFY)
     dataset = MapDataset(dataset, mapper_sup)
 
     sampler_name = cfg.DATALOADER.SAMPLER_TRAIN
@@ -393,7 +424,7 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
 
     if mapper is None:
-        mapper_unsup = DatasetMapper(cfg, is_train=True, use_cons=True)
+        mapper_unsup = DatasetMapper(cfg, is_train=True, use_cons=True, use_hard_aug=False, use_anno_modify=True)
     dataset_unsup = MapDataset(dataset_unsup, mapper_unsup)
 
     sampler_name_unsup = cfg.DATALOADER.SAMPLER_TRAIN

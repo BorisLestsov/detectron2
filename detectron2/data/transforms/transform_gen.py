@@ -20,6 +20,8 @@ from PIL import Image
 
 from .transform import ExtentTransform, ResizeTransform
 from .transform import CutoutTransform
+from .transform import CTAugTransform
+from .ctaug import CTAugment
 
 __all__ = [
     "RandomBrightness",
@@ -33,6 +35,7 @@ __all__ = [
     "ResizeShortestEdge",
     "TransformGen",
     "Cutout",
+    "CTAug",
     "apply_transform_gens",
 ]
 
@@ -413,6 +416,19 @@ class RandomLighting(TransformGen):
         return BlendTransform(
             src_image=self.eigen_vecs.dot(weights * self.eigen_vals), src_weight=1.0, dst_weight=1.0
         )
+
+class CTAug(TransformGen):
+    """ CTAug """
+
+    def __init__(self):
+        """
+        Args:
+        """
+        ctaugment = CTAugment()
+        self._init(locals())
+
+    def get_transform(self, img):
+        return CTAugTransform(self.ctaugment.policy(probe=True))
 
 class Cutout(TransformGen):
     """ Cutout """

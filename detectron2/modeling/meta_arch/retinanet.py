@@ -98,7 +98,7 @@ class RetinaNet(nn.Module):
         self.normalizer = lambda x: (x - pixel_mean) / pixel_std
         self.to(self.device)
 
-    def forward(self, batched_inputs):
+    def forward(self, batched_inputs, ignore_bg=None):
         """
         Args:
             batched_inputs: a list, batched outputs of :class:`DatasetMapper` .
@@ -136,7 +136,7 @@ class RetinaNet(nn.Module):
 
         if self.training:
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
-            return (box_cls, box_delta), self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta)
+            return (box_cls, box_delta), self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta, ignore_bg)
         else:
             results = self.inference(box_cls, box_delta, anchors, images.image_sizes)
             processed_results = []
@@ -149,7 +149,7 @@ class RetinaNet(nn.Module):
                 processed_results.append({"instances": r})
             return processed_results
 
-    def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas):
+    def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas, ignore_bg=None):
         """
         Args:
             For `gt_classes` and `gt_anchors_deltas` parameters, see
@@ -172,7 +172,10 @@ class RetinaNet(nn.Module):
         gt_classes = gt_classes.flatten()
         gt_anchors_deltas = gt_anchors_deltas.view(-1, 4)
 
-        valid_idxs = gt_classes >= 0
+        if ignore_bg is None:
+            valid_idxs = gt_classes >= 0
+        else:
+            valid_idxs =  (gt_classes >= 0) & (gt_classes != self.num_classes)
         foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
         num_foreground = foreground_idxs.sum()
 
