@@ -420,7 +420,7 @@ class RandomLighting(TransformGen):
 class CTAug(TransformGen):
     """ CTAug """
 
-    def __init__(self, probe=False):
+    def __init__(self, probe=True):
         """
         Args:
         """
