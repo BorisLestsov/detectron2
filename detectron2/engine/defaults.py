@@ -52,7 +52,8 @@ import operator
 import numpy as np
 
 from detectron2.modeling.postprocessing import detector_postprocess
-from detectron2.structures import Instances
+from detectron2.structures import Instances, Boxes
+
 
 __all__ = ["default_argument_parser", "default_setup", "DefaultPredictor", "DefaultTrainer"]
 
@@ -449,11 +450,19 @@ class DefaultTrainer(SimpleTrainer):
                 h, w = img.shape[1], img.shape[2]
                 detector_postprocess(instances, h, w)
 
+                # REVERSE TRANSFORM
+                rev_trans = data2[i]["rev_tr"]
+                bbox_numpy = instances.pred_boxes.tensor.cpu().numpy()
+                for rev_tr_i, rev_tr in enumerate(rev_trans.transforms):
+                    bbox_numpy = rev_tr.apply_box(bbox_numpy)
+                instances.pred_boxes = Boxes(torch.from_numpy(bbox_numpy))
+
                 result = Instances((h,w))
                 result.gt_boxes = instances.pred_boxes
                 result.gt_classes = instances.pred_classes
 
                 data2[i]["instances"] = result
+
 
             _, consistency_loss = self.model(data2, ignore_bg=True)
 

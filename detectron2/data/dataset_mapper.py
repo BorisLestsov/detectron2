@@ -9,6 +9,12 @@ from PIL import Image
 from . import detection_utils as utils
 from . import transforms as T
 
+from fvcore.transforms.transform import (
+    HFlipTransform,
+    NoOpTransform,
+    TransformList,
+)
+
 """
 This file contains the default mapping that's applied to "dataset dicts".
 """
@@ -42,6 +48,7 @@ class DatasetMapper:
 
         self.add_trans = []
         self.add_trans.append(T.CTAug())
+        self.add_trans.append(T.RandomFlip(0.5))
         # self.add_trans.append(T.RandomContrast(0.5, 2))
         # self.add_trans.append(T.RandomBrightness(0.5, 2))
         # self.add_trans.append(T.RandomSaturation(0.5, 2))
@@ -117,7 +124,7 @@ class DatasetMapper:
 
         dup = 2 if self.cons else 1
         ret = []
-        for _ in range(dup):
+        for dup_i in range(dup):
             dataset_dict = copy.deepcopy(dataset_dict_orig)  # it will be modified by code below
             image = image_orig.copy()
 
@@ -171,11 +178,19 @@ class DatasetMapper:
                 sem_seg_gt = torch.as_tensor(sem_seg_gt.astype("long"))
                 dataset_dict["sem_seg"] = sem_seg_gt
 
-            ret.append(dataset_dict)
 
             # CONSISTENCY_SAMPLE
             image_orig, transforms_add = T.apply_transform_gens(self.add_trans, image_orig)
             transforms += transforms_add
 
+            if dup_i > 0:
+                rev_trans = []
+                for i, tr in enumerate(transforms_add.transforms[::-1]):
+                    if isinstance(tr, HFlipTransform):
+                        rev_trans.append(HFlipTransform(tr.width))
+                rev_trans = TransformList(rev_trans)
+                dataset_dict["rev_tr"] = rev_trans
+
+            ret.append(dataset_dict)
 
         return ret

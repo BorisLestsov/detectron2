@@ -420,7 +420,7 @@ class RandomLighting(TransformGen):
 class CTAug(TransformGen):
     """ CTAug """
 
-    def __init__(self):
+    def __init__(self, probe=False):
         """
         Args:
         """
@@ -428,7 +428,7 @@ class CTAug(TransformGen):
         self._init(locals())
 
     def get_transform(self, img):
-        return CTAugTransform(self.ctaugment.policy(probe=True))
+        return CTAugTransform(self.ctaugment.policy(probe=self.probe))
 
 class Cutout(TransformGen):
     """ Cutout """
