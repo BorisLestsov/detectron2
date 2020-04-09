@@ -42,6 +42,8 @@ class DetectionCheckpointer(Checkpointer):
         loaded = super()._load_file(filename)  # load native pth checkpoint
         if "model" not in loaded:
             loaded = {"model": loaded}
+        print("WARNING: REMOVING SCHEDULER FROM CHECKPOINT")
+        del loaded["scheduler"]
         return loaded
 
     def _load_model(self, checkpoint):

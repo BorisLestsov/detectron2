@@ -438,6 +438,7 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     else:
         raise ValueError("Unknown training sampler: {}".format(sampler_name_unsup))
 
+    images_per_worker *= 4
     if cfg.DATALOADER.ASPECT_RATIO_GROUPING:
         data_loader_unsup = torch.utils.data.DataLoader(
             dataset_unsup,

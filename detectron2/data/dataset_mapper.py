@@ -179,16 +179,19 @@ class DatasetMapper:
                 dataset_dict["sem_seg"] = sem_seg_gt
 
 
-            # CONSISTENCY_SAMPLE
-            image_orig, transforms_add = T.apply_transform_gens(self.add_trans, image_orig)
-            transforms += transforms_add
+            if dup_i == 0:
+                # GEN CONSISTENCY TRANS
+                image_orig, transforms_add = T.apply_transform_gens(self.add_trans, image_orig)
+                transforms += transforms_add
 
             if dup_i > 0:
-                rev_trans = []
-                for i, tr in enumerate(transforms_add.transforms[::-1]):
-                    if isinstance(tr, HFlipTransform):
-                        rev_trans.append(HFlipTransform(tr.width))
-                rev_trans = TransformList(rev_trans)
+                # ADD REV CONSISTENCY TRANS
+                # rev_trans = []
+                # for i, tr in enumerate(transforms_add.transforms[::-1]):
+                #     if isinstance(tr, HFlipTransform):
+                #         rev_trans.append(HFlipTransform(tr.width))
+                # rev_trans = TransformList(rev_trans)
+                rev_trans = transforms_add
                 dataset_dict["rev_tr"] = rev_trans
 
             ret.append(dataset_dict)

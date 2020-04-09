@@ -440,8 +440,8 @@ class DefaultTrainer(SimpleTrainer):
                 pred = self.model(data1)
             self.model.train()
 
-            for i, d in enumerate(data1):
-                ps_thresh = 0.95
+            for i in range(len(data1)):
+                ps_thresh = self.cfg.SOLVER.PS_THRESH
                 instances = pred[i]["instances"].to(torch.device("cpu"))
                 idx = instances.scores > ps_thresh
                 instances = instances[idx]
