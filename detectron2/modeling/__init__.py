@@ -53,4 +53,4 @@ assert (
     torch.Tensor([1]) == torch.Tensor([2])
 ).dtype == torch.bool, "Your Pytorch is too old. Please update to contain https://github.com/pytorch/pytorch/pull/21113"
 
-from AdelaiDet.adet.modeling.one_stage_detector import OneStageDetector
+#import AdelaiDet.adet
