@@ -437,7 +437,7 @@ class DefaultTrainer(SimpleTrainer):
             # GET PS
             self.model.eval()
             with torch.no_grad():
-                pred = self.model(data1)
+                (box_clss, box_deltas), pred = self.model(data1)
             self.model.train()
 
             for i in range(len(data1)):
@@ -449,6 +449,7 @@ class DefaultTrainer(SimpleTrainer):
                 img = data1[i]["image"]
                 h, w = img.shape[1], img.shape[2]
                 detector_postprocess(instances, h, w)
+
 
                 # REVERSE TRANSFORM
                 rev_trans = data2[i]["rev_tr"]

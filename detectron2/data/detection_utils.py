@@ -463,7 +463,7 @@ def build_transform_gen(cfg, is_train, hard_aug=False, anno_modify=False):
     # tfm_gens.append(T.Resize(max_size))
     if is_train:
         if hard_aug:
-            # tfm_gens.append(T.CTAug())
+            #tfm_gens.append(T.CTAug())
             tfm_gens.append(T.RandomContrast(0.5, 2))
             tfm_gens.append(T.RandomBrightness(0.5, 2))
             tfm_gens.append(T.RandomSaturation(0.5, 2))

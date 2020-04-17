@@ -133,6 +133,7 @@ class RetinaNet(nn.Module):
         features = [features[f] for f in self.in_features]
         box_cls, box_delta = self.head(features)
         anchors = self.anchor_generator(features)
+        self.anchors = [Boxes.cat(anchors_i) for anchors_i in anchors]
 
         if self.training:
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
@@ -147,7 +148,7 @@ class RetinaNet(nn.Module):
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
                 processed_results.append({"instances": r})
-            return processed_results
+            return (box_cls, box_delta), processed_results
 
     def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas, ignore_bg=None):
         """
@@ -317,8 +318,12 @@ class RetinaNet(nn.Module):
 
             # Keep top k top scoring indices only.
             num_topk = min(self.topk_candidates, box_reg_i.size(0))
+
             # torch.sort is actually faster than .topk (at least on GPUs)
+            #box_cls_i = 1.0 - box_cls_i
             predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
+            #topk_idxs = torch.randperm(box_cls_i.nelement())
+            #predicted_prob = box_cls_i.view(-1)[topk_idxs].view(box_cls_i.size())
             predicted_prob = predicted_prob[:num_topk]
             topk_idxs = topk_idxs[:num_topk]
 

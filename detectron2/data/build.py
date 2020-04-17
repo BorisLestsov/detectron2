@@ -420,7 +420,6 @@ def build_detection_train_loader_zip(cfg, mapper=None):
         dataset_dicts_unsup = [el for el in dataset_dicts_unsup if not el["image_id"] in names]
     logger.info("Train dataset sized: SUP: {}, UNSUP: {}".format(len(dataset_dicts), len(dataset_dicts_unsup)))
 
-
     dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
 
     if mapper is None:
