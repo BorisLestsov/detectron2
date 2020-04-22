@@ -437,12 +437,16 @@ class DefaultTrainer(SimpleTrainer):
             # GET PS
             self.model.eval()
             with torch.no_grad():
-                (box_clss, box_deltas), pred = self.model(data1)
+                pred = self.model(data1, return_neg=True)
             self.model.train()
 
             for i in range(len(data1)):
                 ps_thresh = self.cfg.SOLVER.PS_THRESH
                 instances = pred[i]["instances"].to(torch.device("cpu"))
+                # if comm.is_main_process():
+                #     print("AFTER_BOXES", instances.pred_boxes)
+                #     print("AFTER_SCORES", instances.scores)
+                #     print("AFTER_CLASSES", instances.pred_classes)
                 idx = instances.scores > ps_thresh
                 instances = instances[idx]
 

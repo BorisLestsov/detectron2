@@ -198,7 +198,13 @@ def _create_text_labels(classes, scores, class_names):
     """
     labels = None
     if classes is not None and class_names is not None and len(class_names) > 1:
-        labels = [class_names[i] for i in classes]
+        #labels = [class_names[i] for i in classes]
+        labels = []
+        for i in classes:
+            if i != -100:
+                labels.append(class_names[i])
+            else:
+                labels.append("bg")
     if scores is not None:
         if labels is None:
             labels = ["{:.0f}%".format(s * 100) for s in scores]

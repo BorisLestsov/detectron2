@@ -1,6 +1,7 @@
 # Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved
 import logging
 import math
+import numpy as np
 from typing import List
 import torch
 from fvcore.nn import sigmoid_focal_loss_jit, smooth_l1_loss
@@ -98,7 +99,7 @@ class RetinaNet(nn.Module):
         self.normalizer = lambda x: (x - pixel_mean) / pixel_std
         self.to(self.device)
 
-    def forward(self, batched_inputs, ignore_bg=None):
+    def forward(self, batched_inputs, ignore_bg=False, return_neg=False):
         """
         Args:
             batched_inputs: a list, batched outputs of :class:`DatasetMapper` .
@@ -139,7 +140,7 @@ class RetinaNet(nn.Module):
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
             return (box_cls, box_delta), self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta, ignore_bg)
         else:
-            results = self.inference(box_cls, box_delta, anchors, images.image_sizes)
+            results = self.inference(box_cls, box_delta, anchors, images.image_sizes, return_neg=return_neg)
             processed_results = []
             for results_per_image, input_per_image, image_size in zip(
                 results, batched_inputs, images.image_sizes
@@ -148,9 +149,9 @@ class RetinaNet(nn.Module):
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
                 processed_results.append({"instances": r})
-            return (box_cls, box_delta), processed_results
+            return processed_results
 
-    def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas, ignore_bg=None):
+    def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas, ignore_bg=False):
         """
         Args:
             For `gt_classes` and `gt_anchors_deltas` parameters, see
@@ -173,15 +174,26 @@ class RetinaNet(nn.Module):
         gt_classes = gt_classes.flatten()
         gt_anchors_deltas = gt_anchors_deltas.view(-1, 4)
 
-        if ignore_bg is None:
+        if ignore_bg == False:
             valid_idxs = gt_classes >= 0
-        else:
-            valid_idxs =  (gt_classes >= 0) & (gt_classes != self.num_classes)
-        foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
-        num_foreground = foreground_idxs.sum()
+            foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
 
-        gt_classes_target = torch.zeros_like(pred_class_logits)
-        gt_classes_target[foreground_idxs, gt_classes[foreground_idxs]] = 1
+            num_foreground = foreground_idxs.sum()
+
+            gt_classes_target = torch.zeros_like(pred_class_logits)
+            gt_classes_target[foreground_idxs, gt_classes[foreground_idxs]] = 1
+        else:
+            #valid_idxs =  (gt_classes >= 0) & (gt_classes != self.num_classes)
+            valid_idxs =  (gt_classes >= 0) & (gt_classes != self.num_classes) | (gt_classes == -100)
+            foreground_idxs = (gt_classes >= 0) & (gt_classes != self.num_classes)
+            #my_bg_idxs = (gt_classes == -100)
+
+            num_foreground = foreground_idxs.sum()
+
+            gt_classes_target = torch.zeros_like(pred_class_logits)
+            gt_classes_target[foreground_idxs, gt_classes[foreground_idxs]] = 1
+
+
 
         # logits loss
         loss_cls = sigmoid_focal_loss_jit(
@@ -261,7 +273,7 @@ class RetinaNet(nn.Module):
 
         return torch.stack(gt_classes), torch.stack(gt_anchors_deltas)
 
-    def inference(self, box_cls, box_delta, anchors, image_sizes):
+    def inference(self, box_cls, box_delta, anchors, image_sizes, return_neg=False):
         """
         Arguments:
             box_cls, box_delta: Same as the output of :meth:`RetinaNetHead.forward`
@@ -287,10 +299,15 @@ class RetinaNet(nn.Module):
             results_per_image = self.inference_single_image(
                 box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size)
             )
+            if return_neg:
+                results_per_image_neg = self.inference_single_image(
+                    box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size), return_neg=True
+                )
+                results_per_image = results_per_image.cat([results_per_image, results_per_image_neg])
             results.append(results_per_image)
         return results
 
-    def inference_single_image(self, box_cls, box_delta, anchors, image_size):
+    def inference_single_image(self, box_cls, box_delta, anchors, image_size, return_neg=False):
         """
         Single-image inference. Return bounding-box detection results by thresholding
         on scores and applying non-maximum suppression (NMS).
@@ -317,15 +334,23 @@ class RetinaNet(nn.Module):
             box_cls_i = box_cls_i.flatten().sigmoid_()
 
             # Keep top k top scoring indices only.
-            num_topk = min(self.topk_candidates, box_reg_i.size(0))
 
             # torch.sort is actually faster than .topk (at least on GPUs)
-            #box_cls_i = 1.0 - box_cls_i
-            predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
-            #topk_idxs = torch.randperm(box_cls_i.nelement())
-            #predicted_prob = box_cls_i.view(-1)[topk_idxs].view(box_cls_i.size())
-            predicted_prob = predicted_prob[:num_topk]
-            topk_idxs = topk_idxs[:num_topk]
+            if return_neg:
+                if np.random.uniform() < 0.6:
+                    continue
+                num_topk = min(1, box_reg_i.size(0))
+                box_cls_i = 1.0 - box_cls_i + 0.5
+                predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
+                #topk_idxs = torch.randperm(box_cls_i.nelement())
+                #predicted_prob = box_cls_i.view(-1)[topk_idxs].view(box_cls_i.size())
+                predicted_prob = predicted_prob[:num_topk]
+                topk_idxs = topk_idxs[:num_topk]
+            else:
+                num_topk = min(self.topk_candidates, box_reg_i.size(0))
+                predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
+                predicted_prob = predicted_prob[:num_topk]
+                topk_idxs = topk_idxs[:num_topk]
 
             # filter out the proposals with low confidence score
             keep_idxs = predicted_prob > self.score_threshold
@@ -333,7 +358,10 @@ class RetinaNet(nn.Module):
             topk_idxs = topk_idxs[keep_idxs]
 
             anchor_idxs = topk_idxs // self.num_classes
-            classes_idxs = topk_idxs % self.num_classes
+            if return_neg:
+                classes_idxs = torch.ones_like(topk_idxs) * -100
+            else:
+                classes_idxs = topk_idxs % self.num_classes
 
             box_reg_i = box_reg_i[anchor_idxs]
             anchors_i = anchors_i[anchor_idxs]
