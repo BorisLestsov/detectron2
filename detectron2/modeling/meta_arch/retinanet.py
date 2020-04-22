@@ -328,8 +328,12 @@ class RetinaNet(nn.Module):
         scores_all = []
         class_idxs_all = []
 
+        if return_neg:
+            n_levels = len(box_cls)
+            lvls_to_add = np.random.permutation(n_levels)[:2]
+
         # Iterate over every feature level
-        for box_cls_i, box_reg_i, anchors_i in zip(box_cls, box_delta, anchors):
+        for lvl_i, (box_cls_i, box_reg_i, anchors_i) in enumerate(zip(box_cls, box_delta, anchors)):
             # (HxWxAxK,)
             box_cls_i = box_cls_i.flatten().sigmoid_()
 
@@ -337,7 +341,7 @@ class RetinaNet(nn.Module):
 
             # torch.sort is actually faster than .topk (at least on GPUs)
             if return_neg:
-                if np.random.uniform() < 0.6:
+                if not lvl_i in lvls_to_add:
                     continue
                 num_topk = min(1, box_reg_i.size(0))
                 box_cls_i = 1.0 - box_cls_i + 0.5
