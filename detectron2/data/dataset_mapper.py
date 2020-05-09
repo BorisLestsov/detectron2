@@ -49,6 +49,7 @@ class DatasetMapper:
         self.add_trans = []
         self.add_trans.append(T.CTAug())
         self.add_trans.append(T.RandomFlip(0.5))
+        self.add_trans.append(T.RandomRotate(0.5))
         # self.add_trans.append(T.RandomContrast(0.5, 2))
         # self.add_trans.append(T.RandomBrightness(0.5, 2))
         # self.add_trans.append(T.RandomSaturation(0.5, 2))

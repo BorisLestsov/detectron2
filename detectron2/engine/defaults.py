@@ -422,7 +422,7 @@ class DefaultTrainer(SimpleTrainer):
 
         data_time = time.perf_counter() - start
 
-        _, loss_dict_sup = self.model(data)
+        loss_dict_sup = self.model(data)
 
         loss_dict = {}
         for k in loss_dict_sup.keys():
@@ -469,7 +469,7 @@ class DefaultTrainer(SimpleTrainer):
                 data2[i]["instances"] = result
 
 
-            _, consistency_loss = self.model(data2, ignore_bg=True)
+            consistency_loss = self.model(data2, ignore_bg=True)
 
             self._last_data.append({"name" : "data1", "data": data1})
             self._last_data.append({"name" : "data2", "data": data2})

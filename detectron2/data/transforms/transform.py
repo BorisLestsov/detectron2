@@ -6,9 +6,59 @@ import numpy as np
 from fvcore.transforms.transform import HFlipTransform, NoOpTransform, Transform
 from PIL import Image
 
+#import albumentations.augmentations.transforms.ShiftScaleRotate as SSR
+from albumentations.augmentations import functional as F
+import cv2
+
 from .ctaug import apply as ctapply
 
-__all__ = ["ExtentTransform", "ResizeTransform", "CutoutTransform", "CTAugTransform"]
+__all__ = ["ExtentTransform", "ResizeTransform", "CutoutTransform", "CTAugTransform", "RotateTransform"]
+
+
+def coord_shift_scale_rotate(coord, angle, scale, dx, dy, rows, cols):  # skipcq: PYL-W0613
+    x_min, y_min = coord
+    x_max, y_max = cols, rows
+    height, width = rows, cols
+    center = (width / 2, height / 2)
+    matrix = cv2.getRotationMatrix2D(center, angle, scale)
+    matrix[0, 2] += dx * width
+    matrix[1, 2] += dy * height
+    x = np.array([x_min, x_max, x_max, x_min])
+    y = np.array([y_min, y_min, y_max, y_max])
+    ones = np.ones(shape=(len(x)))
+    points_ones = np.vstack([x, y, ones]).transpose()
+    points_ones[:, 0] *= width
+    points_ones[:, 1] *= height
+    tr_points = matrix.dot(points_ones.T).T
+    tr_points[:, 0] /= width
+    tr_points[:, 1] /= height
+
+    x_min, x_max = min(tr_points[:, 0]), max(tr_points[:, 0])
+    y_min, y_max = min(tr_points[:, 1]), max(tr_points[:, 1])
+
+    return x_min, y_min
+
+def box_shift_scale_rotate(bbox, angle, scale, dx, dy, rows, cols):  # skipcq: PYL-W0613
+    x_min, y_min, x_max, y_max = bbox[:4]
+    height, width = rows, cols
+    center = (width / 2, height / 2)
+    matrix = cv2.getRotationMatrix2D(center, angle, scale)
+    matrix[0, 2] += dx * width
+    matrix[1, 2] += dy * height
+    x = np.array([x_min, x_max, x_max, x_min])
+    y = np.array([y_min, y_min, y_max, y_max])
+    ones = np.ones(shape=(len(x)))
+    points_ones = np.vstack([x, y, ones]).transpose()
+    #points_ones[:, 0] *= width
+    #points_ones[:, 1] *= height
+    tr_points = matrix.dot(points_ones.T).T
+    #tr_points[:, 0] /= width
+    #tr_points[:, 1] /= height
+
+    x_min, x_max = min(tr_points[:, 0]), max(tr_points[:, 0])
+    y_min, y_max = min(tr_points[:, 1]), max(tr_points[:, 1])
+
+    return x_min, y_min, x_max, y_max
 
 
 class ExtentTransform(Transform):
@@ -89,6 +139,43 @@ class ResizeTransform(Transform):
     def apply_coords(self, coords):
         coords[:, 0] = coords[:, 0] * (self.new_w * 1.0 / self.w)
         coords[:, 1] = coords[:, 1] * (self.new_h * 1.0 / self.h)
+        return coords
+
+    def apply_segmentation(self, segmentation):
+        segmentation = self.apply_image(segmentation, interp=Image.NEAREST)
+        return segmentation
+
+class RotateTransform(Transform):
+    """
+    Resize the image to a target size.
+    """
+
+    def __init__(self, angle, scale, dx, dy, h, w):
+        """
+        Args:
+            h, w (int): original image size
+            new_h, new_w (int): new image size
+            interp: PIL interpolation methods
+        """
+        # TODO decide on PIL vs opencv
+        scale = 1.0
+        super().__init__()
+        self._set_attributes(locals())
+
+    def apply_image(self, img, interp=None):
+        ret = F.shift_scale_rotate(img, self.angle, self.scale, self.dx, self.dy, cv2.INTER_LINEAR, cv2.BORDER_CONSTANT, None)
+        return ret
+
+    def apply_box(self, coords):
+        for i, bbox in enumerate(coords):
+            bbox_new = box_shift_scale_rotate(bbox, self.angle, self.scale, self.dx, self.dy, self.h, self.w)
+            coords[i] = bbox_new
+        return coords
+
+    def apply_coords(self, coords):
+        for i, a in enumerate(coords):
+            coords[i] = coord_shift_scale_rotate(a, self.angle, self.scale, self.dx, self.dy, self.h, self.w)
+        return []
         return coords
 
     def apply_segmentation(self, segmentation):

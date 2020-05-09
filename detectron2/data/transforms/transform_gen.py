@@ -21,6 +21,7 @@ from PIL import Image
 from .transform import ExtentTransform, ResizeTransform
 from .transform import CutoutTransform
 from .transform import CTAugTransform
+from .transform import RotateTransform
 from .ctaug import CTAugment
 
 __all__ = [
@@ -31,6 +32,7 @@ __all__ = [
     "RandomFlip",
     "RandomSaturation",
     "RandomLighting",
+    "RandomRotate",
     "Resize",
     "ResizeShortestEdge",
     "TransformGen",
@@ -145,6 +147,34 @@ class RandomFlip(TransformGen):
                 return HFlipTransform(w)
             elif self.vertical:
                 return VFlipTransform(h)
+        else:
+            return NoOpTransform()
+
+class RandomRotate(TransformGen):
+    """
+    Flip the image horizontally or vertically with the given probability.
+    """
+
+    def __init__(self, prob=0.5):
+        """
+        Args:
+            prob (float): probability of flip.
+            horizontal (boolean): whether to apply horizontal flipping
+            vertical (boolean): whether to apply vertical flipping
+        """
+        super().__init__()
+        self._init(locals())
+
+
+    def get_transform(self, img):
+        h, w = img.shape[:2]
+        do = self._rand_range() < self.prob
+        if do:
+            rand_angle = int(np.random.uniform(-30, 30))
+            rand_scale = int(np.random.uniform(0.8, 1.2))
+            rand_dx = int(np.random.uniform(-1./64, 1./64))
+            rand_dy = int(np.random.uniform(-1./64, 1./64))
+            return RotateTransform(rand_angle, rand_scale, rand_dx, rand_dy, h, w)
         else:
             return NoOpTransform()
 
