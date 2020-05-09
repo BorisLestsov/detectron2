@@ -137,7 +137,7 @@ class RetinaNet(nn.Module):
 
         if self.training:
             gt_classes, gt_anchors_reg_deltas = self.get_ground_truth(anchors, gt_instances)
-            return (box_cls, box_delta), self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta, ignore_bg)
+            return self.losses(gt_classes, gt_anchors_reg_deltas, box_cls, box_delta, ignore_bg)
         else:
             results = self.inference(box_cls, box_delta, anchors, images.image_sizes)
             processed_results = []
@@ -148,7 +148,7 @@ class RetinaNet(nn.Module):
                 width = input_per_image.get("width", image_size[1])
                 r = detector_postprocess(results_per_image, height, width)
                 processed_results.append({"instances": r})
-            return (box_cls, box_delta), processed_results
+            return processed_results
 
     def losses(self, gt_classes, gt_anchors_deltas, pred_class_logits, pred_anchor_deltas, ignore_bg=None):
         """
