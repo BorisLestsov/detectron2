@@ -437,7 +437,7 @@ class DefaultTrainer(SimpleTrainer):
             # GET PS
             self.model.eval()
             with torch.no_grad():
-                pred = self.model(data1, return_neg=True)
+                pred = self.model(data1, return_neg=self.cfg.SOLVER.SAMPLE_NEG)
             self.model.train()
 
             for i in range(len(data1)):

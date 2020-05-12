@@ -155,7 +155,7 @@ class RandomRotate(TransformGen):
     Flip the image horizontally or vertically with the given probability.
     """
 
-    def __init__(self, prob=0.5):
+    def __init__(self, prob=0.5, max_angle=10, max_scale_diff=0.05, rand_shift=1./128):
         """
         Args:
             prob (float): probability of flip.
@@ -170,10 +170,10 @@ class RandomRotate(TransformGen):
         h, w = img.shape[:2]
         do = self._rand_range() < self.prob
         if do:
-            rand_angle = int(np.random.uniform(-30, 30))
-            rand_scale = int(np.random.uniform(0.8, 1.2))
-            rand_dx = int(np.random.uniform(-1./64, 1./64))
-            rand_dy = int(np.random.uniform(-1./64, 1./64))
+            rand_angle = int(np.random.uniform(-self.max_angle, self.max_angle))
+            rand_scale = int(np.random.uniform(1 - self.max_scale_diff, 1 + self.max_scale_diff))
+            rand_dx = int(np.random.uniform(-self.rand_shift, self.rand_shift))
+            rand_dy = int(np.random.uniform(-self.rand_shift, self.rand_shift))
             return RotateTransform(rand_angle, rand_scale, rand_dx, rand_dy, h, w)
         else:
             return NoOpTransform()

@@ -301,7 +301,7 @@ class RetinaNet(nn.Module):
             )
             if return_neg:
                 results_per_image_neg = self.inference_single_image(
-                    box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size), return_neg=True
+                    box_cls_per_image, box_reg_per_image, anchors_per_image, tuple(image_size), return_neg=return_neg
                 )
                 results_per_image = results_per_image.cat([results_per_image, results_per_image_neg])
             results.append(results_per_image)
@@ -344,22 +344,32 @@ class RetinaNet(nn.Module):
                 if not lvl_i in lvls_to_add:
                     continue
                 num_topk = min(1, box_reg_i.size(0))
-                box_cls_i = 1.0 - box_cls_i + 0.5
-                predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
+                #box_cls_i = 1.0 - box_cls_i + 0.5
+                box_cls_i = 1.0 - 2*(box_cls_i - 0.5)
+
+                cls_wise = box_cls_i.reshape(-1, self.num_classes)
+                predicted_prob_sum, topk_idxs_sum = cls_wise.sum(axis=1).sort(descending=True)
+                predicted_prob_sum, topk_idxs_sum = predicted_prob_sum[:num_topk], topk_idxs_sum[:num_topk]
+                topk_idxs = topk_idxs_sum * self.num_classes
+                predicted_prob = box_cls_i.view(-1)[topk_idxs]#.view(box_cls_i.size())
+                predicted_prob.fill_(1.0)
+
+                #predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
+                #topk_idxs = topk_idxs[:num_topk]
+                #predicted_prob = predicted_prob[:num_topk]
+
                 #topk_idxs = torch.randperm(box_cls_i.nelement())
                 #predicted_prob = box_cls_i.view(-1)[topk_idxs].view(box_cls_i.size())
-                predicted_prob = predicted_prob[:num_topk]
-                topk_idxs = topk_idxs[:num_topk]
             else:
                 num_topk = min(self.topk_candidates, box_reg_i.size(0))
                 predicted_prob, topk_idxs = box_cls_i.sort(descending=True)
                 predicted_prob = predicted_prob[:num_topk]
                 topk_idxs = topk_idxs[:num_topk]
 
-            # filter out the proposals with low confidence score
-            keep_idxs = predicted_prob > self.score_threshold
-            predicted_prob = predicted_prob[keep_idxs]
-            topk_idxs = topk_idxs[keep_idxs]
+                # filter out the proposals with low confidence score
+                keep_idxs = predicted_prob > self.score_threshold
+                predicted_prob = predicted_prob[keep_idxs]
+                topk_idxs = topk_idxs[keep_idxs]
 
             anchor_idxs = topk_idxs // self.num_classes
             if return_neg:
@@ -376,16 +386,24 @@ class RetinaNet(nn.Module):
             scores_all.append(predicted_prob)
             class_idxs_all.append(classes_idxs)
 
+
         boxes_all, scores_all, class_idxs_all = [
             cat(x) for x in [boxes_all, scores_all, class_idxs_all]
         ]
-        keep = batched_nms(boxes_all, scores_all, class_idxs_all, self.nms_threshold)
-        keep = keep[: self.max_detections_per_image]
 
-        result = Instances(image_size)
-        result.pred_boxes = Boxes(boxes_all[keep])
-        result.scores = scores_all[keep]
-        result.pred_classes = class_idxs_all[keep]
+        if return_neg:
+            result = Instances(image_size)
+            result.pred_boxes = Boxes(boxes_all)
+            result.scores = scores_all
+            result.pred_classes = class_idxs_all
+        else:
+            keep = batched_nms(boxes_all, scores_all, class_idxs_all, self.nms_threshold)
+            keep = keep[: self.max_detections_per_image]
+
+            result = Instances(image_size)
+            result.pred_boxes = Boxes(boxes_all[keep])
+            result.scores = scores_all[keep]
+            result.pred_classes = class_idxs_all[keep]
         return result
 
     def preprocess_image(self, batched_inputs):

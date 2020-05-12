@@ -363,7 +363,11 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     dataset = DatasetFromList(dataset_dicts, copy=True)
 
     if mapper is None:
-        mapper_sup = DatasetMapper(cfg, is_train=True, use_cons=False, use_hard_aug=cfg.INPUT.USE_TRAIN_AUG_HARD, use_anno_modify=cfg.INPUT.USE_TRAIN_AUG_ANNO_MODIFY)
+        mapper_sup = DatasetMapper(cfg,
+                                   is_train=True,
+                                   use_cons=False,
+                                   use_aug_weak=cfg.INPUT.USE_SUP_TRAIN_AUG_WEAK,
+                                   use_aug_strong=cfg.INPUT.USE_SUP_TRAIN_AUG_STRONG)
     dataset = MapDataset(dataset, mapper_sup)
 
     sampler_name = cfg.DATALOADER.SAMPLER_TRAIN
@@ -415,15 +419,31 @@ def build_detection_train_loader_zip(cfg, mapper=None):
     )
 
     if cfg.DATASETS.TRAIN_UNSUP == cfg.DATASETS.TRAIN:
-        names = [el["image_id"] for el in dataset_dicts]
-        names = set(names)
-        dataset_dicts_unsup = [el for el in dataset_dicts_unsup if not el["image_id"] in names]
+            unsup_all_len = len(dataset_dicts_unsup)
+            unsup_frac_len = int(unsup_all_len * cfg.DATASETS.UNSUP_FRAC)
+
+            if cfg.DATASETS.UNSUP_EXCLUDE_SUP:
+                names = [el["image_id"] for el in dataset_dicts]
+                names = set(names)
+                dataset_dicts_unsup = [el for el in dataset_dicts_unsup if not el["image_id"] in names]
+
+            dataset_dicts_unsup = dataset_dicts_unsup[:unsup_frac_len]
+
+
     logger.info("Train dataset sized: SUP: {}, UNSUP: {}".format(len(dataset_dicts), len(dataset_dicts_unsup)))
 
-    dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
+    if cfg.DATASETS.USE_SUP_AS_UNSUP:
+        logger.info("WARNING: FINETUNE ON SUP DATA!")
+        dataset_unsup = DatasetFromList(dataset_dicts, copy=True)
+    else:
+        dataset_unsup = DatasetFromList(dataset_dicts_unsup, copy=True)
 
     if mapper is None:
-        mapper_unsup = DatasetMapper(cfg, is_train=True, use_cons=True, use_hard_aug=False, use_anno_modify=True)
+        mapper_unsup = DatasetMapper(cfg,
+                                     is_train=True,
+                                     use_cons=True,
+                                     use_aug_weak=True,
+                                     use_aug_strong=False)
     dataset_unsup = MapDataset(dataset_unsup, mapper_unsup)
 
     sampler_name_unsup = cfg.DATALOADER.SAMPLER_TRAIN

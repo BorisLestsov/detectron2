@@ -39,7 +39,7 @@ class DatasetMapper:
     3. Prepare data and annotations to Tensor and :class:`Instances`
     """
 
-    def __init__(self, cfg, is_train=True, use_cons=False, use_hard_aug=False, use_anno_modify=False):
+    def __init__(self, cfg, is_train=True, use_cons=False, use_aug_weak=False, use_aug_strong=False):
         if cfg.INPUT.CROP.ENABLED and is_train:
             self.crop_gen = T.RandomCrop(cfg.INPUT.CROP.TYPE, cfg.INPUT.CROP.SIZE)
             logging.getLogger(__name__).info("CropGen used in training: " + str(self.crop_gen))
@@ -47,16 +47,18 @@ class DatasetMapper:
             self.crop_gen = None
 
         self.add_trans = []
-        self.add_trans.append(T.CTAug())
-        self.add_trans.append(T.RandomFlip(0.5))
-        self.add_trans.append(T.RandomRotate(0.5))
-        # self.add_trans.append(T.RandomContrast(0.5, 2))
-        # self.add_trans.append(T.RandomBrightness(0.5, 2))
-        # self.add_trans.append(T.RandomSaturation(0.5, 2))
-        # self.add_trans.append(T.RandomLighting(1))
+        if INPUT.USE_UNSUP_TRAIN_AUG_STRONG:
+            self.add_trans.append(T.CTAug())
+            self.add_trans.append(T.RandomFlip(0.5))
+            self.add_trans.append(T.RandomRotate(0.7, 30, 0.2, 1./64))
+        else:
+            self.add_trans.append(T.RandomContrast(0.5, 2))
+            self.add_trans.append(T.RandomBrightness(0.5, 2))
+            self.add_trans.append(T.RandomSaturation(0.5, 2))
+            self.add_trans.append(T.RandomLighting(1))
         self.cons     = use_cons
 
-        tfm_gens = utils.build_transform_gen(cfg, is_train, hard_aug=use_hard_aug, anno_modify=use_anno_modify)
+        tfm_gens = utils.build_transform_gen(cfg, is_train, aug_weak=use_aug_weak, aug_strong=use_aug_strong)
         self.static_tfm_gens, self.dynamic_tfm_gens = tfm_gens[:1], tfm_gens[1:]
 
         # fmt: off
