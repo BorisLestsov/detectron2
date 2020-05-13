@@ -330,7 +330,7 @@ class RetinaNet(nn.Module):
 
         if return_neg:
             n_levels = len(box_cls)
-            lvls_to_add = np.random.permutation(n_levels)[:2]
+            lvls_to_add = np.random.permutation(n_levels)[:1]
 
         # Iterate over every feature level
         for lvl_i, (box_cls_i, box_reg_i, anchors_i) in enumerate(zip(box_cls, box_delta, anchors)):

@@ -1,5 +1,19 @@
 #!/bin/bash
 
+
+echo 5;
+# default, hard aug
+OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_rot_strong/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 SOLVER.USE_CONS False SOLVER.C_W 0.0 INPUT.USE_TRAIN_AUG_HARD True SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 2500 OUTPUT_DIR $OUT_DIR
+
+echo 6;
+# consistency unsup + sup
+OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_finetune_strong_unsup_strong_no_exclude/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 DATASETS.UNSUP_EXCLUDE_SUP False SOLVER.USE_CONS True SOLVER.C_W 0.4 SOLVER.PS_THRESH 0.6 SOLVER.SAMPLE_NEG True SOLVER.WARMUP_ITERS 2 SOLVER.MAX_ITER 37000 SOLVER.BASE_LR 0.001 SOLVER.STEPS '(35000, 40000)' MODEL.WEIGHTS ./output_8gpu_lowres_frac_0_01_sup3_rot/model_final.pth INPUT.USE_SUP_TRAIN_AUG_WEAK True INPUT.USE_SUP_TRAIN_AUG_STRONG True SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 500 OUTPUT_DIR $OUT_DIR
+
+
+
+exit 0;
+
+
 # no consistency, weak aug (nothing)
 OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_finetune_weakonly/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 SOLVER.USE_CONS False SOLVER.C_W 0.4 SOLVER.PS_THRESH 0.6 SOLVER.WARMUP_ITERS 2 SOLVER.MAX_ITER 37000 SOLVER.BASE_LR 0.001 SOLVER.STEPS '(35000, 40000)' MODEL.WEIGHTS ./output_8gpu_lowres_frac_0_01_sup3_rot/model_final.pth INPUT.USE_SUP_TRAIN_AUG_WEAK True INPUT.USE_SUP_TRAIN_AUG_STRONG False SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 500 OUTPUT_DIR $OUT_DIR
 
@@ -12,15 +26,6 @@ OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_finetune_weakonly_unsup_strong/; mkdir
 # consistency, weak aug on sup and unsup
 OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_finetune_weakonly_unsup_weak/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 SOLVER.USE_CONS True SOLVER.C_W 0.4 SOLVER.PS_THRESH 0.6 SOLVER.WARMUP_ITERS 2 SOLVER.MAX_ITER 37000 SOLVER.BASE_LR 0.001 SOLVER.STEPS '(35000, 40000)' MODEL.WEIGHTS ./output_8gpu_lowres_frac_0_01_sup3_rot/model_final.pth INPUT.USE_SUP_TRAIN_AUG_WEAK True INPUT.USE_SUP_TRAIN_AUG_STRONG False INPUT.USE_UNSUP_TRAIN_AUG_STRONG False SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 500 OUTPUT_DIR $OUT_DIR
 
-# default, hard aug
-OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_rot_strong/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 SOLVER.USE_CONS False SOLVER.C_W 0.0 INPUT.USE_TRAIN_AUG_HARD True SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 2500 OUTPUT_DIR $OUT_DIR
-
-# consistency unsup + sup
-OUT_DIR=output_8gpu_lowres_frac_0_01_sup3_finetune_strong_unsup_strong_no_exclude/; mkdir -p $OUT_DIR && rm -rf $OUT_DIR/* ; pkill tensorboard ; tensorboard --port 1500 --logdir ./$OUT_DIR > $OUT_DIR/outtb.txt 2>&1 & CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6,7 python -u tools/train_net.py --num-gpus 8 --config-file configs/COCO-Detection/retinanet_R_50_FPN_1x_lowres_frac_0_01.yaml DATASETS.FRAC 0.01 DATASETS.UNSUP_EXCLUDE_SUP False SOLVER.USE_CONS True SOLVER.C_W 0.4 SOLVER.PS_THRESH 0.6 SOLVER.SAMPLE_NEG True SOLVER.WARMUP_ITERS 2 SOLVER.MAX_ITER 37000 SOLVER.BASE_LR 0.001 SOLVER.STEPS '(35000, 40000)' MODEL.WEIGHTS ./output_8gpu_lowres_frac_0_01_sup3_rot/model_final.pth INPUT.USE_SUP_TRAIN_AUG_WEAK True INPUT.USE_SUP_TRAIN_AUG_STRONG True SOLVER.VIS_PERIOD 20 SOLVER.WRITE_PERIOD 20 TEST.EVAL_PERIOD 500 OUTPUT_DIR $OUT_DIR
-
-
-
-exit 0;
 
 
 

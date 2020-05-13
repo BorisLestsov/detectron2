@@ -47,7 +47,7 @@ class DatasetMapper:
             self.crop_gen = None
 
         self.add_trans = []
-        if INPUT.USE_UNSUP_TRAIN_AUG_STRONG:
+        if cfg.INPUT.USE_UNSUP_TRAIN_AUG_STRONG:
             self.add_trans.append(T.CTAug())
             self.add_trans.append(T.RandomFlip(0.5))
             self.add_trans.append(T.RandomRotate(0.7, 30, 0.2, 1./64))
